@@ -36,14 +36,14 @@ to play it.
 FastAPI already serves the HTML, so a single service gets you both. One link for the form,
 one thing that can break, done.
 
-**1. Push to GitHub** (see below).
+**1.** The repo is already pushed: https://github.com/0neHackers/ragoa-voice-rag
 
 **2.** On Render: **New → Blueprint**, point it at your repo. `render.yaml` is already in
-`V5.0/` and configured.
+`V7.0/` and configured.
 
 **3. Set the root directory to `master_repo/V7.0`.** Render looks for the Dockerfile
 relative to the repo root, and yours lives one level down. Either set it in the dashboard
-or move `V5.0/`'s contents to the repo root before pushing.
+or move `V7.0/`'s contents to the repo root.
 
 **4.** Add your keys in the dashboard — `SARVAM_API_KEY` and `ANTHROPIC_API_KEY`. They're
 marked `sync: false` in the blueprint specifically so they never end up in git.
@@ -96,34 +96,31 @@ will silently do nothing. Serve it over http://localhost or https://, always.
 ## Option C — Hugging Face Spaces
 
 Honestly a decent fit, since the model and dataset are already on HF and the free tier gives
-you 16 GB. Create a Space with the **Docker** SDK, push the contents of `V5.0/`, and add the
+you 16 GB. Create a Space with the **Docker** SDK, push the contents of `V7.0/`, and add the
 two keys as Space secrets. Same Dockerfile, no changes.
 
 ---
 
-## GitHub
+## GitHub — done
 
-The repo is already committed locally at `master_repo/`, with real per-phase history
-(V0.0 → V5.0). Keep that history — Video 1 is about process, and a repo with one giant
-commit dated the day of the deadline tells the opposite story.
+**https://github.com/0neHackers/ragoa-voice-rag** — public, `main`, 15 commits, 434 files.
 
-```bash
-cd master_repo
-git remote add origin https://github.com/<you>/<repo>.git
-git branch -M main
-git push -u origin main
-```
+The per-phase history (V0.0 → V7.0) is intact, which matters: Video 1 is about process, and
+a repo with one giant commit dated the day of the deadline tells the opposite story. Each
+version folder is a frozen snapshot with its own dated `CHANGELOG.md` entry.
 
-Then confirm nothing secret went up:
+Checked before pushing, and worth re-checking if you ever force-push:
 
 ```bash
-git ls-files | grep -i env
+git ls-files | grep -i env          # only .env.example files, never .env
 ```
 
-You should see `.env.example` files and nothing else. If a real `.env` shows up, stop and
-remove it from history before pushing anywhere public.
+The real `.env` is git-ignored, and no key material is in any tracked file. The built index
+(38 MB) is excluded too — it's reproducible from `retrieval.build_index`, so committing it
+into every version folder would bloat history for nothing.
 
-Make the repo **public** — the form asks for a link judges can open.
+> **Rotate both API keys once judging closes.** They went through a chat transcript, so treat
+> them as exposed no matter how carefully the repo handles them.
 
 ---
 
