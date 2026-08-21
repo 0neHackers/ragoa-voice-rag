@@ -106,6 +106,20 @@ class Generator:
             raise RuntimeError("429 rate limited by Anthropic.")
         if response.status_code >= 500:
             raise RuntimeError(f"Anthropic {response.status_code}: {response.text[:200]}")
+
+        # An exhausted credit balance comes back as a 400, which is otherwise a
+        # don't-retry hard error — and erroring the whole request would take a working
+        # retrieval pipeline down with it. It's an account state, not a bad request, so
+        # degrade to extractive and say so in the answer's `model` field rather than
+        # returning nothing. Everything upstream of generation still works.
+        if response.status_code == 400 and _is_billing_error(response.text):
+            answer = self._extractive(chunks)
+            answer.model = (
+                "extractive fallback — Anthropic credit balance exhausted, so no text was "
+                "generated; this is a retrieved passage verbatim"
+            )
+            return answer
+
         if response.status_code >= 400:
             raise ValueError(f"Anthropic {response.status_code}: {response.text[:300]}")
 
@@ -150,6 +164,16 @@ class Generator:
             model="none (extractive fallback — set ANTHROPIC_API_KEY to enable generation)",
             cited_chunk_ids=[best.chunk.chunk_id],
         )
+
+
+def _is_billing_error(body: str) -> bool:
+    """Distinguish 'you are out of money' from 'your request was malformed'.
+
+    Both arrive as HTTP 400. Only the first is worth degrading gracefully for — a
+    genuinely malformed request is our bug and should surface loudly.
+    """
+    low = (body or "").lower()
+    return any(s in low for s in ("credit balance", "billing", "insufficient", "quota"))
 
 
 _SENTENCE_END = re.compile(r"(?<=[।.!?])\s+")

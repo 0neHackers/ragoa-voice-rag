@@ -101,3 +101,60 @@ class TestRetry:
         samples = [policy.delay_for(5) for _ in range(50)]
         assert all(0.0 <= s <= 2.0 for s in samples)
         assert len(set(samples)) > 1  # jitter, not a fixed schedule
+
+
+class TestLiveApiRegressions:
+    """Regressions for bugs that only appeared against the real Sarvam API.
+
+    Each of these passed unit tests happily while being wrong in production, which is the
+    whole reason they're pinned here.
+    """
+
+    def test_stop_sentinel_is_not_sent(self):
+        """`{"event": "stop"}` is rejected by Sarvam as `'audio' must not be None`.
+
+        Every frame is validated against its audio-request schema, so a terminator
+        sentinel — which several other streaming APIs document — is a protocol error, not
+        an end-of-stream marker. The stream ends by closing the socket.
+        """
+        import inspect
+
+        from stt import sarvam_client
+
+        source = inspect.getsource(sarvam_client.SarvamSTT._stream)
+        # Strip comments first — the sentinel is named in a comment explaining why it
+        # isn't sent, and a test that can't tell code from commentary would fail on the
+        # documentation of its own bug.
+        code = " ".join(line.split("#", 1)[0] for line in source.splitlines())
+        assert '"event": "stop"' not in code
+        assert "'event': 'stop'" not in code
+
+    def test_error_frames_are_surfaced_not_swallowed(self):
+        """A `type: "error"` frame carries the only useful diagnostic; reporting
+        "no transcript" over the top of it is how the bad terminator survived."""
+        import inspect
+
+        from stt import sarvam_client
+
+        source = inspect.getsource(sarvam_client.SarvamSTT._stream)
+        assert 'msg.get("type") == "error"' in source
+        assert "UpstreamProtocolError" in source
+
+    def test_transport_mode_defaults_to_auto(self, monkeypatch):
+        monkeypatch.delenv("STT_TRANSPORT", raising=False)
+        monkeypatch.setenv("SARVAM_API_KEY", "test-key")
+        assert sarvam_client_module().SarvamSTT().transport_mode == "auto"
+
+    def test_batch_mode_skips_streaming_entirely(self, monkeypatch):
+        """Once streaming is known dead, paying ~1.5s to re-probe it per request is
+        pure waste."""
+        monkeypatch.setenv("STT_TRANSPORT", "batch")
+        monkeypatch.setenv("SARVAM_API_KEY", "test-key")
+        client = sarvam_client_module().SarvamSTT()
+        assert client.transport_mode == "batch"
+
+
+def sarvam_client_module():
+    from stt import sarvam_client
+
+    return sarvam_client

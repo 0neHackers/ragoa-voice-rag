@@ -366,3 +366,62 @@ at this font.
 afterwards. Recording it because the whole point of a per-version changelog is that the
 folder and the entry agree, and twice now they briefly didn't.
 **Supersedes:** V6.0
+
+## V6.2 — 2026-08-21
+**Type:** Major
+**Summary:** First run against live Sarvam and Anthropic keys. Two real STT bugs found and
+fixed, streaming established as unavailable on this account, graceful degradation added for
+an exhausted LLM balance, and the team marks + Disket Mono wired into the UI.
+**Files changed:**
+- `stt/sarvam_client.py` — removed the `{"event": "stop"}` terminator; `_recv` now runs as a
+  cancellable task with a bounded `flush_grace_s` window; `type: "error"` frames surface as
+  `UpstreamProtocolError`; empty-streaming results now fall through to batch; added
+  `transport_mode` (`STT_TRANSPORT`) and the `_streaming_known_dead` latch.
+- `generation/generator.py` — added `_is_billing_error()`; a 400 caused by an exhausted
+  credit balance degrades to labelled extractive instead of failing the request.
+- `demo/app.py` — mounts `/assets`; serves `/config.js`; `/health` reports `version`.
+- `demo/index.html` — footer carries the 0neHackers wordmark and the made-by lockup;
+  `.mark` sizing rules; version chip.
+- `demo/fonts/DisketMono-{Regular,Bold}.woff2` — added (converted from the supplied TTFs,
+  82KB → 18KB each).
+- `demo/assets/0neHackers.svg`, `demo/assets/madeby0nehackers.svg` — added.
+- `tests/test_stt.py` — `TestLiveApiRegressions`, 4 tests pinning the bugs above.
+  Suite now **167**, all passing.
+- `DECISIONS.md`, `README.md` — rewritten on STT to match what the live API does.
+**Details:**
+**Streaming speech-to-text does not work on this Sarvam account, and that is now the
+documented behaviour rather than an aspiration.** The WebSocket endpoint connects,
+authenticates, and validates the model — it rejects `saarika:v2` and `saarika:flash` as
+deprecated, so it is genuinely parsing our requests — accepts every audio frame without
+complaint, and returns **zero transcript frames**. Tested at 100/200/500ms chunk cadences,
+with and without the model parameter, and against `speech-to-text-translate`. The batch REST
+endpoint transcribes the same audio perfectly on the first attempt.
+Two genuine bugs surfaced on the way to establishing that, both of which unit tests were
+happy with:
+1. **The stream terminator was invalid.** We sent `{"event": "stop"}`, which several other
+   streaming APIs document. Sarvam validates *every* frame against its audio-request schema
+   and answered `Invalid request: 'audio' must not be None`. Worse, `_extract_transcript`
+   silently ignored `type: "error"` frames, so the client reported "returned no transcript"
+   over the top of the one diagnostic that explained why.
+2. **The receive loop never ended.** Sarvam never closes the socket, so `async for raw in ws`
+   blocked until the outer timeout — **34.7 seconds measured** — after which the batch
+   fallback quietly rescued the request. Every transcript came back labelled `batch` and the
+   streaming path looked broken when it was really never being allowed to finish.
+Then a third, introduced by the fix: once `_stream` returned a typed error instead of
+raising, the batch fallback branch was unreachable and the whole request failed. Fallback now
+triggers on an unsuccessful streaming result, not only on an exception.
+Verified end to end using Sarvam's own TTS to synthesise Hindi speech and feeding it back
+through the pipeline: spoken `ईमानदारी या सच्चाई की परिभाषा क्या है` → transcript
+`ईमानदारी या सच्चाई की परिभाषा क्या है?` (exact) → retrieval → grounded answer, all four
+guardrails passing. **STT 1146ms, retrieval 121.8ms, full 2430ms.**
+**The Anthropic key has no credits.** That arrives as an HTTP 400, which is otherwise a
+don't-retry hard error, and it was taking a fully working retrieval pipeline down with it.
+It's an account state rather than a malformed request, so generation now degrades to
+extractive with the reason in `Answer.model`. Genuinely malformed 400s still raise, because
+those are our bug and should be loud.
+Disket Mono is now present, converted from the supplied TTFs. All four faces — Cal Sans,
+JetBrains Mono, Disket Mono, Noto Sans Devanagari — confirmed `status: "loaded"` in the
+browser rather than assumed from a `document.fonts.check()` call, which returns true whenever
+any fallback can render the string. Both SVGs verified at their natural aspect (2214x252 and
+6241x468) with no page overflow at 320px.
+**Supersedes:** V6.1

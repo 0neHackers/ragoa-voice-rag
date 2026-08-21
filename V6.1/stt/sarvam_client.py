@@ -42,6 +42,9 @@ class SarvamConfig:
     sample_rate: int = TARGET_SAMPLE_RATE
     ws_timeout_s: float = 20.0
     chunk_ms: int = 100  # audio frames pushed per streaming message
+    #: How long to hold the socket open after the last audio frame so the recogniser can
+    #: flush its final segment. Closing immediately truncates the tail of the utterance.
+    flush_grace_s: float = 1.5
 
     @classmethod
     def from_env(cls, **overrides: object) -> "SarvamConfig":
@@ -149,9 +152,19 @@ def record_microphone(seconds: float = 6.0, sample_rate: int = TARGET_SAMPLE_RAT
 class SarvamSTT:
     """Transcribes `Audio` and returns a `StageResult[Transcript]` — never raises."""
 
+    #: Set once a streaming attempt opens fine and returns nothing. Class-level on
+    #: purpose: it's a property of the account, not of one client instance, and the demo
+    #: server builds its client once but serves many requests.
+    _streaming_known_dead: bool = False
+
     def __init__(self, config: SarvamConfig | None = None) -> None:
         self.config = config or SarvamConfig.from_env()
         self.retry = RetryPolicy(max_attempts=3, base_delay_s=0.25, max_delay_s=2.0)
+        # auto  — try streaming, fall back to batch and latch (default)
+        # batch — skip streaming entirely
+        # streaming — no fallback; fail loudly instead. Useful for verifying the
+        #             streaming path once Sarvam enables it on the account.
+        self.transport_mode = os.getenv("STT_TRANSPORT", "auto").strip().lower()
 
     # -- public ------------------------------------------------------------- #
 
@@ -186,8 +199,18 @@ class SarvamSTT:
                 ),
             )
 
+        if self.transport_mode == "batch" or SarvamSTT._streaming_known_dead:
+            # Either configured for batch, or an earlier request in this process already
+            # established that streaming yields nothing on this account. Re-probing it
+            # per request costs ~1.5s of dead time for a result we already know.
+            return self._batch(audio)
+
+        ws_err: StageError | None = None
         try:
-            return asyncio.run(self._stream(audio))
+            streamed = asyncio.run(self._stream(audio))
+            if streamed.ok:
+                return streamed
+            ws_err = streamed.error
         except Exception as exc:  # noqa: BLE001 - transport failures become typed errors
             ws_err = StageError(
                 stage=Stage.STT,
@@ -195,14 +218,24 @@ class SarvamSTT:
                 message=f"Streaming transcription failed: {exc}",
                 detail={"transport": "streaming"},
             )
-            if not allow_batch_fallback or ws_err.kind is ErrorKind.AUTH:
-                # An auth failure will fail identically over REST — don't burn the budget.
-                return StageResult[Transcript](stage=Stage.STT, error=ws_err)
 
-            batch = self._batch(audio)
-            if batch.error is not None:
-                batch.error.detail["streaming_error"] = ws_err.message
-            return batch
+        assert ws_err is not None
+        if not allow_batch_fallback or self.transport_mode == "streaming":
+            return StageResult[Transcript](stage=Stage.STT, error=ws_err)
+        if ws_err.kind is ErrorKind.AUTH:
+            # An auth failure fails identically over REST — don't burn the budget.
+            return StageResult[Transcript](stage=Stage.STT, error=ws_err)
+
+        # A socket that opens, accepts every frame, and returns nothing is not a
+        # transient blip — it's this account's streaming tier. Latch it so the rest of
+        # the process goes straight to the endpoint that works.
+        if ws_err.kind is ErrorKind.UPSTREAM:
+            SarvamSTT._streaming_known_dead = True
+
+        batch = self._batch(audio)
+        if batch.error is not None:
+            batch.error.detail["streaming_error"] = ws_err.message
+        return batch
 
     # -- streaming (primary) ------------------------------------------------- #
 
@@ -216,6 +249,7 @@ class SarvamSTT:
         bytes_per_chunk = int(cfg.sample_rate * 2 * cfg.chunk_ms / 1000)
         partials: list[str] = []
         finals: list[str] = []
+        upstream_errors: list[str] = []
 
         async def _run() -> None:
             async with websockets.connect(
@@ -234,21 +268,61 @@ class SarvamSTT:
                         # Pace sends to roughly real time. Blasting the whole clip at once
                         # is what makes a "streaming" demo indistinguishable from batch.
                         await asyncio.sleep(cfg.chunk_ms / 1000 * 0.25)
-                    await ws.send(json.dumps({"event": "stop"}))
+
+                    # No terminator frame. Sarvam validates *every* message against its
+                    # audio-request schema, so a `{"event": "stop"}` sentinel — which is
+                    # what this client sent originally, and what several other streaming
+                    # APIs document — comes back as
+                    # `Invalid request: 'audio' must not be None`. Verified against the
+                    # live endpoint. The stream ends by closing the socket.
 
                 async def _recv() -> None:
-                    async for raw in ws:
-                        msg = json.loads(raw) if isinstance(raw, (str, bytes)) else {}
-                        text, is_final = _extract_transcript(msg)
-                        if not text:
-                            if msg.get("type") in ("end", "close") or msg.get("event") == "stop":
-                                break
-                            continue
-                        (finals if is_final else partials).append(text)
+                    try:
+                        async for raw in ws:
+                            msg = json.loads(raw) if isinstance(raw, (str, bytes)) else {}
 
-                await asyncio.gather(_send(), _recv())
+                            if msg.get("type") == "error":
+                                detail = msg.get("data") or {}
+                                upstream_errors.append(
+                                    str(detail.get("message") or detail)[:300]
+                                )
+                                continue
 
-        await asyncio.wait_for(_run(), timeout=cfg.ws_timeout_s + audio.duration_s + 10)
+                            text, is_final = _extract_transcript(msg)
+                            if not text:
+                                if msg.get("type") in ("end", "close"):
+                                    break
+                                continue
+                            (finals if is_final else partials).append(text)
+                    except Exception:  # noqa: BLE001 - normal close races the iterator
+                        pass
+
+                # Send everything, then give the recogniser a bounded window to flush.
+                #
+                # This cannot be a plain `gather(_send(), _recv())`. Sarvam never closes
+                # the socket on its own, so `async for raw in ws` waits forever and the
+                # gather only ends when the whole coroutine hits its outer timeout — 34
+                # seconds, measured, after which the batch fallback quietly rescued the
+                # request and every transcript came back labelled "batch". The streaming
+                # path looked broken when it was really just never being allowed to end.
+                receiver = asyncio.create_task(_recv())
+                await _send()
+                try:
+                    await asyncio.wait_for(asyncio.shield(receiver), timeout=cfg.flush_grace_s)
+                except asyncio.TimeoutError:
+                    pass  # grace elapsed — whatever arrived is what we have
+                receiver.cancel()
+
+        await asyncio.wait_for(
+            _run(), timeout=cfg.ws_timeout_s + audio.duration_s + cfg.flush_grace_s + 10
+        )
+
+        # An error frame is the provider telling us why it produced nothing. Reporting
+        # "no transcript" over the top of it throws away the only useful diagnostic —
+        # which is exactly how the bad terminator above survived until it was tested
+        # against the live API.
+        if upstream_errors and not (finals or partials):
+            raise UpstreamProtocolError("; ".join(upstream_errors[:3]))
 
         text = " ".join(finals).strip() or (partials[-1].strip() if partials else "")
         if not text:
@@ -344,6 +418,10 @@ class SarvamSTT:
         )
 
 
+class UpstreamProtocolError(RuntimeError):
+    """Sarvam sent a `type: "error"` frame. Carries its message so it can be acted on."""
+
+
 class TransientHTTPError(RuntimeError):
     def __init__(self, status: int, body: str) -> None:
         super().__init__(f"HTTP {status}: {body}")
@@ -387,6 +465,6 @@ def _classify(exc: BaseException) -> ErrorKind:
 
 
 __all__ = [
-    "Audio", "SarvamConfig", "SarvamSTT",
+    "Audio", "SarvamConfig", "SarvamSTT", "UpstreamProtocolError",
     "load_audio_file", "record_microphone",
 ]

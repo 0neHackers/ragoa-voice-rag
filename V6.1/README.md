@@ -127,16 +127,41 @@ retrieval corpus, so the train/validation split carries no methodological weight
 
 ### Speech-to-text — Sarvam, streaming
 
-`stt/sarvam_client.py` uses Sarvam's **WebSocket streaming** endpoint, not the batch one.
+`stt/sarvam_client.py` prefers Sarvam's **WebSocket streaming** endpoint and falls back to
+batch — and on our account, the fallback is what actually runs. More on that below, because
+it's a real deviation from the plan rather than a detail.
 
 Sarvam over ElevenLabs because the dataset is AI4Bharat's Indic retrieval benchmark and the
 demo gets spoken by an India-based team. Sarvam is tuned for Indic phonetics and code-mixed
 Hindi-English, which is exactly what it's going to hear.
 
-The batch REST endpoint stays as a **labelled** fallback. A `wss://` handshake is the most
-environment-fragile call in the whole pipeline — corporate proxies and some PaaS egress rules
-block it while letting HTTPS through. When the fallback fires, `Transcript.transport` reads
-`"batch"`, so a demo never claims to be streaming when it wasn't.
+**Tested against the live API, and streaming doesn't work on this key.** The WebSocket
+endpoint connects, authenticates, validates the model — it rejects `saarika:v2` and
+`saarika:flash` as deprecated, so it's clearly parsing our requests — accepts every audio
+frame without complaint, and then returns **zero transcript frames**. We tried 100ms, 200ms
+and 500ms chunk cadences, with and without the model parameter, and the
+`speech-to-text-translate` endpoint too. The batch REST endpoint transcribes the identical
+audio perfectly, first try.
+
+Two genuine bugs surfaced while establishing that, both invisible without a real key:
+
+- The stream terminator was wrong. We sent `{"event": "stop"}`, which several streaming APIs
+  document. Sarvam validates *every* frame as an audio request, so it answered
+  `Invalid request: 'audio' must not be None` — and our parser was quietly swallowing
+  `type: "error"` frames, reporting "no transcript" over the top of the one useful
+  diagnostic.
+- The receive loop never terminated. Sarvam doesn't close the socket, so `async for raw in ws`
+  waited until the outer 34-second timeout fired, at which point the batch fallback rescued
+  the request. Streaming looked broken when it was really just never being allowed to finish.
+
+So the shipped path is **batch, labelled as batch**. `Transcript.transport` reads `"batch"`,
+the demo displays it, and this README says it — a demo should never claim to be streaming when
+it isn't. The client still probes streaming once per process; the moment that probe comes back
+empty it latches and stops paying for it, so the cost is one probe rather than ~1.5s on every
+request. `STT_TRANSPORT=streaming` re-exercises the path with no code change if Sarvam turns it
+on for the account.
+
+Measured round trip on 2.1s of Hindi audio: **~0.9–1.2s**, batch.
 
 **There's no typed-text shortcut anywhere in the voice stage.** A missing key gets you a
 typed error, not a substitute. `Transcript.is_real_audio` is set only by code paths that

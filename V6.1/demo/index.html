@@ -276,7 +276,33 @@ pre { overflow-x: auto; font-size: var(--step--1); color: var(--text-dim); backg
 .stagger > *:nth-child(5) { animation-delay: 160ms; }
 .hidden { display: none !important; }
 
-footer { margin-top: var(--sp-5); padding-top: var(--sp-4); border-top: var(--line) solid var(--border); color: var(--text-mute); font-size: var(--step--1); display: flex; justify-content: space-between; gap: var(--sp-3); flex-wrap: wrap; }
+footer {
+  margin-top: var(--sp-5); padding-top: var(--sp-4);
+  border-top: var(--line) solid var(--border);
+  color: var(--text-mute); font-size: var(--step--1);
+  display: flex; justify-content: space-between; align-items: flex-end;
+  gap: var(--sp-4); flex-wrap: wrap;
+}
+.footer__brand { display: flex; flex-direction: column; gap: var(--sp-2); min-width: 0; }
+.footer__meta { font-family: var(--f-label); letter-spacing: 0.12em; text-transform: uppercase; }
+
+/* Both marks are wide (2214x252 and 6241x468), so they're sized by height and left to
+   scale their own width. `width:auto` plus `max-width:100%` keeps them from ever
+   pushing the footer past the viewport at 320px. */
+.mark {
+  display: block; width: auto; max-width: 100%; height: auto;
+  transition: opacity var(--med) var(--smooth), transform var(--med) var(--bounce);
+}
+.mark--word { height: clamp(1.15rem, 0.95rem + 0.95vw, 2.1rem); }
+.mark--madeby { height: clamp(0.85rem, 0.72rem + 0.62vw, 1.5rem); opacity: 0.6; }
+.mark--word:hover, .mark--madeby:hover { opacity: 1; transform: translateY(-2px); }
+
+/* The "made by" lockup ships as flat #6B6B75, which sits too close to the panel colour
+   in dark mode. Lifting it optically rather than editing the source SVG keeps the file
+   byte-identical to what the designer handed over. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .mark--madeby { filter: brightness(1.45); }
+}
 
 /* Motion is decoration here; the interface works identically without it. */
 @media (prefers-reduced-motion: reduce) {
@@ -377,8 +403,11 @@ footer { margin-top: var(--sp-5); padding-top: var(--sp-4); border-top: var(--li
   </section>
 
   <footer>
-    <span>Team <strong>0neHackers</strong> — HH Goa 2026, Task 2</span>
-    <span class="label" id="ver"></span>
+    <div class="footer__brand">
+      <img src="assets/0neHackers.svg" alt="0neHackers" class="mark mark--word">
+      <span class="footer__meta">HH Goa 2026 · Task 2 · <span id="ver"></span></span>
+    </div>
+    <img src="assets/madeby0nehackers.svg" alt="Made by 0neHackers" class="mark mark--madeby">
   </footer>
 
 </div>
@@ -430,6 +459,8 @@ fetch(api('/health')).then(r => r.json()).then(h => {
   if (!h.stt_configured) {
     setStatus('SARVAM_API_KEY is not set — the voice path returns a typed config error rather than a fake transcript.', 'warn');
   }
+  const v = document.getElementById('ver');
+  if (v) v.textContent = 'v' + (h.version || '');
 }).catch(() => setStatus('Could not reach /health.', 'err'));
 
 /* ── render ─────────────────────────────────────────────────────────────── */

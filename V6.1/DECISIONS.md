@@ -23,6 +23,34 @@ for long files and its round-trip alone would consume most of the pipeline budge
 transcript" path anywhere in this codebase — if the key is missing, the STT stage returns a
 typed `StageError`, it does not silently substitute text.
 
+**Verified against the live API on 2026-08-21, and the streaming half does not work on our
+account.** Three things came out of that, all of which only a real key could surface:
+
+1. The original terminator was wrong. This client ended a stream with `{"event": "stop"}`,
+   which several other streaming APIs document. Sarvam validates *every* frame against its
+   audio-request schema, so the sentinel came back as
+   `Invalid request: 'audio' must not be None`. The stream ends by closing the socket.
+2. The audio frame shape was right —
+   `{"audio": {"data": <b64>, "encoding": "audio/wav", "sample_rate": 16000}}` — confirmed
+   by probing six candidate shapes; `audio/x-raw` is rejected, `audio/wav` accepted.
+3. **The WebSocket endpoint accepts audio and returns nothing.** It connects, authenticates,
+   validates the model (it rejects `saarika:v2` and `saarika:flash` as deprecated), takes
+   every frame without complaint, and emits zero transcript frames — tested at 100ms, 200ms
+   and 500ms chunk cadences, with and without the model parameter, and against
+   `speech-to-text-translate` too. The batch REST endpoint transcribes the identical audio
+   perfectly.
+
+So the shipped default is **batch, honestly labelled**, not streaming. The client still tries
+streaming first, and the moment a streaming attempt opens cleanly and yields nothing it
+latches `_streaming_known_dead` so the rest of the process goes straight to the endpoint that
+works — one wasted probe per process instead of ~1.5s wasted per request. `STT_TRANSPORT`
+forces `batch` or `streaming` explicitly.
+
+This is a deviation from the plan and it is visible rather than hidden: `Transcript.transport`
+reads `"batch"`, the demo shows it, and the README says so. Measured round trip on 2.1s of
+audio: **~0.9–1.2s batch**. If Sarvam enables streaming on the account, `STT_TRANSPORT=streaming`
+exercises the path with no code change.
+
 ---
 
 ## D2 — Dataset subset: **`hi` (Hindi), `validation` split, first 1500 examples**

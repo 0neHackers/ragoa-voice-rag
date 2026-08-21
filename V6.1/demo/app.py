@@ -32,7 +32,7 @@ from contextlib import asynccontextmanager  # noqa: E402
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile  # noqa: E402
 from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
 from fastapi.staticfiles import StaticFiles  # noqa: E402
-from fastapi.responses import HTMLResponse, JSONResponse  # noqa: E402
+from fastapi.responses import HTMLResponse, JSONResponse, Response  # noqa: E402
 from pydantic import BaseModel, Field  # noqa: E402
 
 @asynccontextmanager
@@ -54,6 +54,13 @@ app = FastAPI(
 _FONT_DIR = Path(__file__).resolve().parent / "fonts"
 _FONT_DIR.mkdir(exist_ok=True)
 app.mount("/fonts", StaticFiles(directory=str(_FONT_DIR)), name="fonts")
+
+# Team wordmark + "made by" lockup. Served rather than inlined: together they're ~60KB of
+# path data, which is a lot to push into every HTML response for two images the browser
+# will happily cache on its own.
+_ASSET_DIR = Path(__file__).resolve().parent / "assets"
+_ASSET_DIR.mkdir(exist_ok=True)
+app.mount("/assets", StaticFiles(directory=str(_ASSET_DIR)), name="assets")
 
 app.add_middleware(
     CORSMiddleware,
@@ -111,7 +118,7 @@ class TextQuery(BaseModel):
 def health() -> JSONResponse:
     if _pipeline is None:
         return JSONResponse(status_code=503, content={"ok": False, "error": _startup_error})
-    return JSONResponse({"ok": True, **_pipeline.health()})
+    return JSONResponse({"ok": True, "version": app.version, **_pipeline.health()})
 
 
 @app.get("/guardrails")
@@ -187,6 +194,19 @@ def _serialise(response: Any, *, voice_input: bool) -> dict:
 @app.get("/", response_class=HTMLResponse)
 def index() -> str:
     return (Path(__file__).resolve().parent / "index.html").read_text(encoding="utf-8")
+
+
+@app.get("/config.js")
+def config_js() -> Response:
+    """Serve the API-base config the page loads before its own script.
+
+    It only matters when the frontend is hosted apart from the backend, but the page
+    requests it unconditionally, and a 404 on every load is noise that hides real
+    failures in the network panel.
+    """
+    path = Path(__file__).resolve().parent / "config.js"
+    body = path.read_text(encoding="utf-8") if path.exists() else "window.__API_BASE__='';"
+    return Response(content=body, media_type="application/javascript")
 
 
 if __name__ == "__main__":
