@@ -53,3 +53,45 @@ Build tooling added at repo root: `bump.sh` (mechanises master-prompt section 1.
 6, 7) and a shared `master_repo/.venv` — the virtualenv is a reproducible build artifact and is
 excluded from version snapshots rather than copied into all of them.
 **Supersedes:** V0.0
+
+## V2.0 — 2026-08-21
+**Type:** Major
+**Summary:** Phase 2 — MSMARCO-XI loading against the dataset's real schema, plus all four
+required chunking strategies as independently testable modules.
+**Files changed:**
+- `data/loader.py` — new. `Example`/`Passage` dataclasses, `load_examples()`, `_coerce_passages()`,
+  `corpus_stats()`, `_read_parquet()`, JSONL cache with atomic writes.
+- `data/build_corpus.py` — new. CLI that loads the corpus and profiles every strategy over it
+  (chunk counts, chars p50/p90/max, build seconds).
+- `chunking/base.py` — new. `ChunkingStrategy` ABC, `split_sentences()` (Devanagari danda aware),
+  `split_paragraphs()`, script-aware `approx_tokens()`.
+- `chunking/fixed_size.py` — new. Strategy 1: character-window chunking with overlap.
+- `chunking/semantic.py` — new. Strategy 2: embedding-similarity breakpoints with a
+  percentile threshold; `chunk_examples()` overridden to embed the whole corpus in one pass.
+- `chunking/recursive.py` — new. Strategy 3: paragraph → sentence → clause → hard-cut descent,
+  with greedy repacking of runt pieces.
+- `chunking/metadata_aware.py` — new. Strategy 4: passage-as-chunk, metadata propagated.
+- `chunking/registry.py` — new. `STRATEGIES`, `get_strategy()`, `DEFAULT_ENSEMBLE`.
+- `retrieval/embedder.py` — new. `Embedder` (fastembed/ONNX, L2-normalised output),
+  `get_embedder()` process-wide cache, `warmup()`.
+- `tests/test_chunking.py` — new. 35 tests. Total suite now 50, all passing.
+- `DECISIONS.md` — D8 added (embedding latency floor).
+**Details:** Three schema facts were established by inspection rather than assumption, and each
+changed the code. (1) `load_dataset("ai4bharat/MSMARCO-XI", "hi")` fails — the repo has no named
+configs, only per-language parquet files, so the loader addresses `validation/hinval.parquet`
+directly. (2) The `passages` column is a struct of three parallel lists —
+`Translated_passages`, `English_passages`, `is_selected` (int 0/1) — not the `passage_text`
+shape plain MS MARCO uses; both are now handled. (3) The Hindi train parquet is 3.7GB in a
+single row group against 462MB for validation, with identical schema, so validation is used
+(D2 amended in effect). Loaded corpus: 2000 examples / 19,987 passages / mean 330 chars.
+The JSONL cache is keyed on (lang, split) only, *not* on limit — an earlier per-limit key meant
+every corpus-size change re-read the parquet at ~5 minutes a time. It now extracts a 5000-example
+slice once and serves smaller limits by prefix, taking reload from 335s to 0.36s.
+Measured chunk behaviour over 400 examples / 3995 passages: fixed_size 4138 chunks (p50 296
+chars), recursive 4070 (p50 298), metadata_aware 4029 (p50 297); semantic over 100 examples
+produces 1.49 chunks per passage against ~1.02 for the others, confirming it is the only
+strategy that meaningfully re-segments this corpus.
+`is_selected` is carried into chunk metadata but deliberately excluded from ranking — it is
+ground-truth answer labelling, and boosting on it would leak the answer key into retrieval and
+inflate every benchmark number this project reports.
+**Supersedes:** V1.0
