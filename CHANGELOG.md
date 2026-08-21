@@ -207,3 +207,76 @@ an orchestrator cannot be verified without guardrails and a generator to orchest
 bumping to a version whose pipeline cannot run end to end would have frozen a snapshot that
 never worked. Later phases return to one bump per phase.
 **Supersedes:** V3.0
+
+## V5.0 — 2026-08-21
+**Type:** Major
+**Summary:** Phases 7–8 — benchmarks, threshold calibration, the deployable demo (web +
+CLI), and two guardrail corrections that only measurement could have found.
+**Files changed:**
+- `benchmarks/latency.py` — new. P50/P70/P100 over real dataset queries; nearest-rank
+  `percentile()`; excluded-and-reported warmup; declines counted, not dropped; detects
+  extractive mode and labels the full-pipeline row as not-an-LLM-measurement.
+- `benchmarks/calibrate_thresholds.py` — new. Scores answerable vs held-out vs
+  out-of-domain vs gibberish populations on **both** dense and lexical signals; reports
+  whether they separate at all rather than always emitting a confident threshold.
+- `benchmarks/chunking_comparison.py` — new. recall@5 and MRR per strategy against the
+  dataset's own `is_selected` labels, with chunk count and embed cost alongside.
+- `guardrails/confidence.py` — rewritten. Added the lexical-support signal; `min_top_score`
+  0.42 → **0.45**; documented the calibration data inline.
+- `harness/orchestrator.py` — pre-retrieval guardrails now run **before** the embed.
+- `guardrails/suite.py` — `run_pre_retrieval()` `query_vector` is now optional.
+- `demo/app.py` — new. FastAPI: `/ask/voice`, `/ask/text`, `/health`, `/guardrails`;
+  lifespan startup that records failures instead of crashing the container.
+- `demo/index.html` — new. Browser UI; Web Audio API WAV capture; full guardrail/timing trace.
+- `demo/cli.py` — new. `--mic`/`--file`/`--text`/`--demo-suite`.
+- `stt/sarvam_client.py` — `load_audio_file()` accepts file-like objects.
+- `Dockerfile`, `render.yaml`, `Procfile`, `.dockerignore` — new.
+- `README.md`, `DECISIONS.md` — rewritten/corrected (see Details).
+- `tests/test_demo_api.py` — new; `tests/test_guardrails.py`, `tests/test_harness.py` extended.
+  Suite now **163**, all passing.
+**Details:**
+**Measured latency, 50 real queries, 15,449-chunk index: retrieval pipeline P50 99.17ms,
+P70 102.39ms, P100 127.53ms — 100% of queries within the 200ms budget.** Query embedding is
+95.4ms of the 99ms P50; dense search 1.03ms, BM25 0.29ms, fusion 0.09ms, all three
+guardrails together under 0.1ms. 50/50 answered, no false refusals. The full-pipeline
+number is **not** a valid end-to-end figure in this run — no `ANTHROPIC_API_KEY` is set, so
+generation ran extractive and collapsed onto retrieval; the benchmark now detects and
+labels that rather than reporting 99ms as "including generation".
+**The confidence gate was rebuilt after calibration showed it barely worked.** Dense cosine
+alone: answerable queries median 0.675, but *gibberish* median **0.774** — nonsense scored
+higher than real questions, because a multilingual encoder maps arbitrary Devanagari into
+the same region as Hindi prose. The best dense-only threshold (0.67) reached 66% balanced
+accuracy only by refusing 47% of real questions. The lexical signal separates them
+completely: every one of 6 gibberish queries scored **0.00** BM25 while all 60 answerable
+queries scored 8.54–43.33. Requiring BM25 > 0 blocks 7/42 unanswerable queries at **zero
+false refusals**. `min_top_score` moved to 0.45, just below the observed answerable minimum
+of 0.472, because the dense populations overlap too heavily for a higher bar to be worth
+its false-refusal cost. Documented plainly that plausible-but-absent questions
+(out-of-domain: cosine 0.576–0.662, BM25 12.8–19.4) sit inside the answerable range on both
+signals and are the generator's `NO_ANSWER` and the groundedness check's job, not this gate's.
+Fixed while doing so: `lexical_score` is `None` on a chunk BM25 never matched, so the first
+version's `if lexical_scores:` guard skipped the check exactly when *no* term matched —
+letting every gibberish query through the signal added to catch it. An all-`None` list is
+the strongest absence of evidence, not missing data.
+**Pre-retrieval guardrails now run before the query is embedded.** They ran after, which
+made the "rejects bad input before paying downstream cost" claim false: a refused injection
+still spent ~90ms embedding. Measured after the fix, `input_safety` and `language_mismatch`
+declines cost **0.0–0.1ms** instead of ~90ms. The ordering was a leftover constraint from
+the deleted centroid guardrail, the only pre-retrieval check that ever needed the vector.
+**Corrected two documentation claims that did not match the code.** `DECISIONS.md` D2 said
+the `train` split; the loader reads `validation`, deliberately — the Hindi train parquet is
+3.7GB against 462MB for validation with an identical schema, and nothing here is trained.
+It also claimed `load_dataset("ai4bharat/MSMARCO-XI", "hi")`, which fails: the repo is flat
+per-language parquet files, not named configs. D3's `intfloat/multilingual-e5-small` was
+already unavailable in fastembed's registry and had been replaced by
+`paraphrase-multilingual-MiniLM-L12-v2`; D3 now says so and explains the prefix consequence.
+The demo suite's "answerable" examples were replaced with **real indexed corpus queries**.
+The obvious-looking "भारत की राजधानी क्या है?" is not in this corpus — retrieval returns
+passages about the weather in Bokaro and flights to Bangalore, and the gate correctly
+refuses at 0.440. It is kept, relabelled, because a refusal that can be *shown* correct
+demonstrates the guardrail better than a plausible one.
+The browser records via the Web Audio API rather than `MediaRecorder`: Chrome emits
+WebM/Opus, which libsndfile cannot demux, and the alternative was an ffmpeg dependency on
+the deploy host plus a transcode in the request path. The client encodes 16kHz mono WAV
+directly and rejects silence and sub-0.4s clips before spending an STT call.
+**Supersedes:** V4.0

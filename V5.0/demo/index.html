@@ -1,0 +1,393 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Voice RAG — 0neHackers</title>
+<style>
+  :root {
+    --bg:#0f1115; --panel:#171a21; --panel-2:#1e222b; --line:#2a2f3a;
+    --text:#e6e9ef; --muted:#9aa3b2; --accent:#6ea8fe; --ok:#3ddc97;
+    --warn:#ffb454; --err:#ff6b6b; --radius:12px;
+  }
+  * { box-sizing:border-box; }
+  body {
+    margin:0; background:var(--bg); color:var(--text);
+    font:15px/1.55 ui-sans-serif,system-ui,"Segoe UI",Roboto,"Noto Sans Devanagari",sans-serif;
+  }
+  .wrap { max-width:960px; margin:0 auto; padding:28px 20px 64px; }
+  header { border-bottom:1px solid var(--line); padding-bottom:18px; margin-bottom:24px; }
+  h1 { margin:0 0 6px; font-size:22px; letter-spacing:-.01em; }
+  .sub { color:var(--muted); font-size:13px; }
+  .badges { display:flex; gap:8px; flex-wrap:wrap; margin-top:12px; }
+  .badge {
+    font-size:11px; padding:3px 9px; border-radius:999px;
+    background:var(--panel-2); border:1px solid var(--line); color:var(--muted);
+  }
+  .card {
+    background:var(--panel); border:1px solid var(--line);
+    border-radius:var(--radius); padding:18px; margin-bottom:16px;
+  }
+  .row { display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
+  button {
+    background:var(--accent); color:#0b1020; border:0; border-radius:9px;
+    padding:10px 16px; font-size:14px; font-weight:600; cursor:pointer;
+    font-family:inherit;
+  }
+  button.secondary { background:var(--panel-2); color:var(--text); border:1px solid var(--line); }
+  button:disabled { opacity:.45; cursor:not-allowed; }
+  button.recording { background:var(--err); color:#fff; }
+  input[type=text] {
+    flex:1; min-width:240px; background:var(--panel-2); border:1px solid var(--line);
+    color:var(--text); border-radius:9px; padding:10px 12px; font-size:14px; font-family:inherit;
+  }
+  .hint { color:var(--muted); font-size:12px; margin-top:10px; }
+  .status { font-size:13px; color:var(--muted); min-height:20px; margin-top:10px; }
+  .answer { font-size:17px; line-height:1.65; margin:6px 0 0; }
+  .pill {
+    display:inline-block; font-size:11px; font-weight:700; letter-spacing:.04em;
+    padding:3px 10px; border-radius:999px; text-transform:uppercase;
+  }
+  .pill.answered { background:rgba(61,220,151,.15); color:var(--ok); }
+  .pill.declined { background:rgba(255,180,84,.15); color:var(--warn); }
+  .pill.error    { background:rgba(255,107,107,.15); color:var(--err); }
+  .metrics { display:flex; gap:20px; flex-wrap:wrap; margin-top:14px; }
+  .metric .k { font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:.05em; }
+  .metric .v { font-size:19px; font-weight:600; font-variant-numeric:tabular-nums; }
+  .metric .v.over { color:var(--warn); }
+  table { width:100%; border-collapse:collapse; font-size:13px; }
+  th, td { text-align:left; padding:7px 8px; border-bottom:1px solid var(--line); vertical-align:top; }
+  th { color:var(--muted); font-weight:600; font-size:11px; text-transform:uppercase; letter-spacing:.04em; }
+  td.num { font-variant-numeric:tabular-nums; white-space:nowrap; }
+  .g-pass { color:var(--ok); font-weight:600; }
+  .g-block { color:var(--warn); font-weight:600; }
+  details { margin-top:6px; }
+  summary { cursor:pointer; color:var(--muted); font-size:13px; }
+  .passage { border-left:2px solid var(--line); padding:6px 0 6px 12px; margin:10px 0; font-size:13px; }
+  .passage .meta { color:var(--muted); font-size:11px; margin-bottom:3px; font-variant-numeric:tabular-nums; }
+  h2 { font-size:13px; text-transform:uppercase; letter-spacing:.05em; color:var(--muted); margin:0 0 12px; }
+  .hidden { display:none; }
+  code { background:var(--panel-2); padding:1px 5px; border-radius:4px; font-size:12px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <h1>Voice-Enabled RAG</h1>
+    <div class="sub">
+      Team <strong>0neHackers</strong> · HH Goa 2026 Task&nbsp;2 ·
+      Speak a question in Hindi and get an answer grounded in <code>ai4bharat/MSMARCO-XI</code>
+    </div>
+    <div class="badges" id="badges"></div>
+  </header>
+
+  <div class="card">
+    <h2>Ask</h2>
+    <div class="row">
+      <button id="recBtn">🎙 Hold to record</button>
+      <button id="stopBtn" class="secondary hidden">■ Stop</button>
+      <input type="file" id="fileInput" accept="audio/*" class="hidden">
+      <button id="fileBtn" class="secondary">Upload audio</button>
+    </div>
+    <div class="row" style="margin-top:12px">
+      <input type="text" id="textInput" placeholder="…or type a Hindi question (marked as text input, not voice)">
+      <button id="askBtn" class="secondary">Ask</button>
+    </div>
+    <div class="status" id="status"></div>
+    <div class="hint">
+      The voice path runs real Sarvam streaming speech-to-text on captured audio. Typed
+      questions are answered too, but the response is explicitly flagged
+      <code>voice_input: false</code> — a typed question is never presented as a spoken one.
+    </div>
+  </div>
+
+  <div class="card hidden" id="resultCard">
+    <div class="row" style="justify-content:space-between">
+      <h2 style="margin:0">Result</h2>
+      <span class="pill" id="statusPill"></span>
+    </div>
+    <div id="transcriptBlock" class="hidden" style="margin-top:12px">
+      <div class="metric"><span class="k">Transcript</span></div>
+      <div class="answer" id="transcript"></div>
+    </div>
+    <div style="margin-top:14px">
+      <div class="metric"><span class="k" id="answerLabel">Answer</span></div>
+      <p class="answer" id="answer"></p>
+    </div>
+    <div class="metrics" id="metrics"></div>
+  </div>
+
+  <div class="card hidden" id="guardrailCard">
+    <h2>Guardrails</h2>
+    <table>
+      <thead><tr><th>Guardrail</th><th>Verdict</th><th class="num">Score</th><th class="num">Threshold</th><th>Reason</th><th class="num">ms</th></tr></thead>
+      <tbody id="guardrailRows"></tbody>
+    </table>
+  </div>
+
+  <div class="card hidden" id="passageCard">
+    <h2>Retrieved passages</h2>
+    <div id="passages"></div>
+  </div>
+
+  <div class="card hidden" id="traceCard">
+    <h2>Stage timings</h2>
+    <table>
+      <thead><tr><th>Stage</th><th class="num">ms</th></tr></thead>
+      <tbody id="traceRows"></tbody>
+    </table>
+    <details>
+      <summary>Raw JSON response</summary>
+      <pre id="rawJson" style="overflow:auto; font-size:11px; color:var(--muted)"></pre>
+    </details>
+  </div>
+
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+const setStatus = (msg, cls) => { $('status').textContent = msg || ''; $('status').style.color = cls || 'var(--muted)'; };
+
+// ---- health -----------------------------------------------------------
+fetch('/health').then(r => r.json()).then(h => {
+  const b = $('badges');
+  if (!h.ok) { b.innerHTML = `<span class="badge" style="color:var(--err)">offline: ${h.error||'?'}</span>`; return; }
+  const items = [
+    `${h.index_size.toLocaleString()} chunks`,
+    `${h.index_backend} index`,
+    h.embed_model.split('/').pop(),
+    h.stt_configured ? 'Sarvam STT ready' : 'STT key missing',
+    h.generation_enabled ? 'generation on' : 'retrieval only',
+    h.guardrails_enabled ? 'guardrails on' : 'guardrails off',
+    `budget ${h.retrieval_budget_ms}ms`,
+  ];
+  b.innerHTML = items.map(t => `<span class="badge">${t}</span>`).join('');
+  if (!h.stt_configured) setStatus('SARVAM_API_KEY is not set — the voice path will return a typed config error rather than a fake transcript.', 'var(--warn)');
+}).catch(() => setStatus('Could not reach /health', 'var(--err)'));
+
+// ---- render -----------------------------------------------------------
+function render(data) {
+  $('resultCard').classList.remove('hidden');
+  $('statusPill').textContent = data.status;
+  $('statusPill').className = 'pill ' + data.status;
+
+  if (data.transcript) {
+    $('transcriptBlock').classList.remove('hidden');
+    const t = data.transcript;
+    $('transcript').textContent = t.text;
+    $('transcript').insertAdjacentHTML('beforeend',
+      ` <span class="badge">${t.provider}/${t.model} · ${t.transport} · ${t.audio_duration_s}s audio</span>`);
+  } else {
+    $('transcriptBlock').classList.add('hidden');
+  }
+
+  const answerEl = $('answer');
+  if (data.status === 'answered' && data.answer) {
+    $('answerLabel').textContent = data.answer_mode === 'extractive'
+      ? 'Answer (extractive — no LLM key set, this is a verbatim retrieved passage)'
+      : 'Answer (generated)';
+    answerEl.textContent = data.answer;
+    answerEl.style.color = 'var(--text)';
+  } else if (data.status === 'declined') {
+    $('answerLabel').textContent = 'Declined — the system chose not to answer';
+    const g = (data.guardrails || []).find(x => !x.passed);
+    answerEl.textContent = g ? g.reason : (data.reason || 'Declined.');
+    answerEl.style.color = 'var(--warn)';
+  } else {
+    $('answerLabel').textContent = 'Error';
+    answerEl.textContent = data.reason || 'Something failed.';
+    answerEl.style.color = 'var(--err)';
+  }
+
+  const L = data.latency || {};
+  const budget = 200;
+  const over = L.retrieval_ms > budget ? ' over' : '';
+  $('metrics').innerHTML = `
+    <div class="metric"><div class="k">Retrieval pipeline</div><div class="v${over}">${(L.retrieval_ms||0).toFixed(1)}ms</div></div>
+    ${L.stt_ms ? `<div class="metric"><div class="k">Speech-to-text</div><div class="v">${L.stt_ms.toFixed(0)}ms</div></div>` : ''}
+    ${L.generation_ms ? `<div class="metric"><div class="k">Generation</div><div class="v">${L.generation_ms.toFixed(0)}ms</div></div>` : ''}
+    <div class="metric"><div class="k">Full pipeline</div><div class="v">${(L.full_ms||0).toFixed(1)}ms</div></div>
+    <div class="metric"><div class="k">Voice input</div><div class="v">${data.voice_input ? 'yes' : 'no'}</div></div>`;
+
+  const gs = data.guardrails || [];
+  $('guardrailCard').classList.toggle('hidden', gs.length === 0);
+  $('guardrailRows').innerHTML = gs.map(g => `
+    <tr>
+      <td>${g.name}</td>
+      <td class="${g.passed ? 'g-pass' : 'g-block'}">${g.passed ? 'pass' : 'BLOCK'}</td>
+      <td class="num">${g.score != null ? Number(g.score).toFixed(3) : '—'}</td>
+      <td class="num">${g.threshold != null ? Number(g.threshold).toFixed(3) : '—'}</td>
+      <td>${g.reason || ''}</td>
+      <td class="num">${(g.elapsed_ms||0).toFixed(2)}</td>
+    </tr>`).join('');
+
+  const ps = data.retrieved || [];
+  $('passageCard').classList.toggle('hidden', ps.length === 0);
+  $('passages').innerHTML = ps.map((p, i) => `
+    <div class="passage">
+      <div class="meta">[${i+1}] ${p.strategy} · cosine ${p.dense_score != null ? p.dense_score.toFixed(3) : '—'} · bm25 ${p.lexical_score != null ? p.lexical_score.toFixed(2) : '—'} · <code>${p.chunk_id}</code></div>
+      ${p.text}
+    </div>`).join('');
+
+  const stages = Object.entries(L.stages || {}).sort((a,b) => b[1]-a[1]);
+  $('traceCard').classList.toggle('hidden', stages.length === 0);
+  $('traceRows').innerHTML = stages.map(([k,v]) => `<tr><td>${k}</td><td class="num">${v.toFixed(2)}</td></tr>`).join('');
+  $('rawJson').textContent = JSON.stringify(data, null, 2);
+}
+
+async function post(url, body, isForm) {
+  const t0 = performance.now();
+  setStatus('Running pipeline…');
+  try {
+    const res = await fetch(url, isForm ? { method:'POST', body } : {
+      method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)
+    });
+    const data = await res.json();
+    if (!res.ok) { setStatus(data.detail || `HTTP ${res.status}`, 'var(--err)'); return; }
+    render(data);
+    setStatus(`Round trip ${(performance.now()-t0).toFixed(0)}ms (includes network + browser)`);
+  } catch (e) {
+    setStatus('Request failed: ' + e.message, 'var(--err)');
+  }
+}
+
+// ---- text -------------------------------------------------------------
+$('askBtn').onclick = () => {
+  const q = $('textInput').value.trim();
+  if (!q) { setStatus('Type a question first.', 'var(--warn)'); return; }
+  post('/ask/text', { query: q }, false);
+};
+$('textInput').addEventListener('keydown', e => { if (e.key === 'Enter') $('askBtn').click(); });
+
+// ---- file upload ------------------------------------------------------
+$('fileBtn').onclick = () => $('fileInput').click();
+$('fileInput').onchange = e => {
+  const f = e.target.files[0];
+  if (!f) return;
+  const fd = new FormData(); fd.append('audio', f, f.name);
+  setStatus(`Uploading ${f.name} (${(f.size/1024).toFixed(0)}KB)…`);
+  post('/ask/voice', fd, true);
+};
+
+// ---- mic --------------------------------------------------------------
+// Captures raw PCM through the Web Audio API and encodes a 16kHz mono WAV in the
+// browser, rather than using MediaRecorder.
+//
+// MediaRecorder is the obvious choice and the wrong one here: Chrome produces
+// WebM/Opus, and libsndfile (what the server decodes with) has no WebM demuxer. The
+// alternatives were a server-side ffmpeg transcode — a system binary to install on
+// whatever host we deploy to, plus a decode hop in the latency path — or encoding the
+// exact format the STT wants right where the samples already are. This is the second.
+// It also means the upload is already 16kHz mono, so the server resamples nothing.
+const TARGET_RATE = 16000;
+let audioCtx = null, mediaStream = null, procNode = null, srcNode = null;
+let pcmChunks = [], capturedRate = 48000, capturing = false;
+
+function floatTo16BitWav(samples, sampleRate) {
+  const buffer = new ArrayBuffer(44 + samples.length * 2);
+  const view = new DataView(buffer);
+  const writeStr = (off, s) => { for (let i=0;i<s.length;i++) view.setUint8(off+i, s.charCodeAt(i)); };
+  writeStr(0, 'RIFF'); view.setUint32(4, 36 + samples.length*2, true);
+  writeStr(8, 'WAVEfmt '); view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true);            // PCM
+  view.setUint16(22, 1, true);            // mono
+  view.setUint32(24, sampleRate, true);
+  view.setUint32(28, sampleRate * 2, true);
+  view.setUint16(32, 2, true); view.setUint16(34, 16, true);
+  writeStr(36, 'data'); view.setUint32(40, samples.length*2, true);
+  let off = 44;
+  for (let i=0;i<samples.length;i++,off+=2) {
+    const s = Math.max(-1, Math.min(1, samples[i]));
+    view.setInt16(off, s < 0 ? s*0x8000 : s*0x7FFF, true);
+  }
+  return new Blob([view], { type:'audio/wav' });
+}
+
+function downsample(input, fromRate, toRate) {
+  if (fromRate === toRate) return input;
+  const ratio = fromRate / toRate;
+  const out = new Float32Array(Math.round(input.length / ratio));
+  for (let i=0;i<out.length;i++) {
+    // Average the source window rather than point-sampling: decimating 48k->16k by
+    // picking every third sample aliases high frequencies straight into the speech band.
+    const start = Math.floor(i*ratio), end = Math.min(Math.floor((i+1)*ratio), input.length);
+    let sum = 0, n = 0;
+    for (let j=start;j<end;j++) { sum += input[j]; n++; }
+    out[i] = n ? sum/n : 0;
+  }
+  return out;
+}
+
+$('recBtn').onclick = async () => {
+  if (capturing) return;
+  if (!navigator.mediaDevices?.getUserMedia) {
+    setStatus('This browser has no microphone API. Use "Upload audio" instead.', 'var(--err)');
+    return;
+  }
+  try {
+    mediaStream = await navigator.mediaDevices.getUserMedia({
+      audio: { channelCount:1, echoCancellation:true, noiseSuppression:true }
+    });
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    capturedRate = audioCtx.sampleRate;
+    srcNode = audioCtx.createMediaStreamSource(mediaStream);
+    // ScriptProcessorNode is deprecated in favour of AudioWorklet, but an AudioWorklet
+    // needs a separately-served module file and this must work when the page is opened
+    // straight off a deploy with no extra routes. Support is universal.
+    procNode = audioCtx.createScriptProcessor(4096, 1, 1);
+    pcmChunks = [];
+    procNode.onaudioprocess = e => {
+      pcmChunks.push(new Float32Array(e.inputBuffer.getChannelData(0)));
+    };
+    srcNode.connect(procNode);
+    procNode.connect(audioCtx.destination);
+
+    capturing = true;
+    $('recBtn').classList.add('recording');
+    $('recBtn').textContent = '● Recording…';
+    $('stopBtn').classList.remove('hidden');
+    setStatus(`Recording at ${capturedRate}Hz. Ask your question, then press Stop.`);
+  } catch (e) {
+    setStatus('Microphone denied or unavailable: ' + e.message, 'var(--err)');
+  }
+};
+
+$('stopBtn').onclick = async () => {
+  if (!capturing) return;
+  capturing = false;
+  $('recBtn').classList.remove('recording');
+  $('recBtn').textContent = '🎙 Hold to record';
+  $('stopBtn').classList.add('hidden');
+
+  try { procNode.disconnect(); srcNode.disconnect(); } catch (e) {}
+  mediaStream.getTracks().forEach(t => t.stop());
+  await audioCtx.close();
+
+  const total = pcmChunks.reduce((n,c) => n + c.length, 0);
+  const merged = new Float32Array(total);
+  let off = 0;
+  for (const c of pcmChunks) { merged.set(c, off); off += c.length; }
+
+  // Reject silence client-side rather than spending an STT call to discover it. This
+  // is the single most common way a "voice-enabled" demo records nothing at all.
+  let peak = 0;
+  for (let i=0;i<merged.length;i++) peak = Math.max(peak, Math.abs(merged[i]));
+  const seconds = merged.length / capturedRate;
+  if (seconds < 0.4) {
+    setStatus(`Only ${seconds.toFixed(1)}s captured — hold the recording longer.`, 'var(--warn)');
+    return;
+  }
+  if (peak < 0.005) {
+    setStatus(`Captured ${seconds.toFixed(1)}s of near-silence (peak ${peak.toFixed(4)}). Check the mic input and OS permissions.`, 'var(--warn)');
+    return;
+  }
+
+  const blob = floatTo16BitWav(downsample(merged, capturedRate, TARGET_RATE), TARGET_RATE);
+  const fd = new FormData(); fd.append('audio', blob, 'question.wav');
+  setStatus(`Captured ${seconds.toFixed(1)}s (${(blob.size/1024).toFixed(0)}KB WAV, peak ${peak.toFixed(2)}) — transcribing…`);
+  post('/ask/voice', fd, true);
+};
+</script>
+</body>
+</html>
