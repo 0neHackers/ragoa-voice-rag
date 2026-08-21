@@ -1,8 +1,8 @@
 # Voice-Enabled RAG — Team 0neHackers
 
-**HH Goa 2026, Task 2.** Speak a question in Hindi; get an answer grounded in
-[`ai4bharat/MSMARCO-XI`](https://huggingface.co/datasets/ai4bharat/MSMARCO-XI) — or an
-explicit, reasoned refusal when the corpus cannot support one.
+**HH Goa 2026, Task 2.** Ask a question out loud in Hindi. Get an answer grounded in
+[`ai4bharat/MSMARCO-XI`](https://huggingface.co/datasets/ai4bharat/MSMARCO-XI) — or a refusal
+that tells you why.
 
 Shanzal Firoz · Aditya Vishwakarma · Kanishka Rajput
 
@@ -19,27 +19,26 @@ Shanzal Firoz · Aditya Vishwakarma · Kanishka Rajput
                             answer ◀── [groundedness] ◀── Claude Haiku 4.5
 ```
 
-Every stage runs inside a harness that times it, retries only what is worth retrying, and
-converts failures into typed values rather than exceptions. Every refusal is a structured
-response with a machine-readable reason.
+Every stage runs inside a harness that times it, retries only what's worth retrying, and
+turns failures into typed values instead of exceptions. Every refusal comes back as a
+structured response with a machine-readable reason.
 
 ---
 
-## Results at a glance
+## Numbers
 
-Measured over **50 real MSMARCO-XI queries** against the 15,449-chunk index
-(`benchmarks/results_latest.json`):
+50 real MSMARCO-XI queries, 15,449-chunk index (`benchmarks/results_latest.json`):
 
-| Retrieval pipeline — **the number held to the <200ms bar** | |
+| Retrieval pipeline — the number held to the 200ms bar | |
 |---|---|
 | **P50** | **99.17 ms** |
 | **P70** | **102.39 ms** |
 | **P100** | **127.53 ms** |
 | mean / min / stdev | 99.05 / 84.40 / 7.93 ms |
-| within 200ms budget | **100% of queries** |
-| outcomes | 50/50 answered, no false refusals |
+| inside budget | **100% of queries** |
+| outcomes | 50/50 answered, zero false refusals |
 
-Where the time goes — embedding is the floor, everything else is rounding error:
+Where the time actually goes — embedding is the floor, everything else is noise:
 
 | stage | P50 | P100 |
 |---|---|---|
@@ -47,38 +46,42 @@ Where the time goes — embedding is the floor, everything else is rounding erro
 | dense search (FAISS) | 1.03 ms | 1.73 ms |
 | BM25 | 0.29 ms | 0.56 ms |
 | RRF fusion | 0.09 ms | 5.59 ms |
-| all 3 guardrails | < 0.10 ms | < 0.11 ms |
+| all three guardrails | < 0.10 ms | < 0.11 ms |
 
 | | |
 |---|---|
 | Corpus | 15,449 unique chunks from 1,500 MSMARCO-XI Hindi examples (`validation` split) |
 | Index | FAISS `IndexFlatIP`, in-process, exact |
-| Embeddings | `paraphrase-multilingual-MiniLM-L12-v2`, 384-dim, ONNX/CPU, `threads=1` |
-| Chunking strategies | 4 implemented, compared on recall@5 and MRR |
-| Guardrails | 4, at 3 pipeline positions |
+| Embeddings | `paraphrase-multilingual-MiniLM-L12-v2`, 384-dim, ONNX on CPU, `threads=1` |
+| Chunking | 4 strategies, compared on recall@5 and MRR |
+| Guardrails | 4, across 3 pipeline positions |
 | Tests | 163 |
 
-> **The full-pipeline number is not quoted above, deliberately.** The run that produced
-> these figures had no `ANTHROPIC_API_KEY`, so generation fell back to extractive mode — a
-> string slice — and "full pipeline" collapsed onto retrieval at 99.05ms. Reporting that as
-> end-to-end answer latency would be false, so the benchmark detects the case and marks the
-> result `"full_pipeline_includes_llm": false`. Set the key and re-run
-> `python -m benchmarks.latency --n 50` for a real end-to-end figure.
+### Which number is the 200ms one
 
-> **Which number is held to 200ms, and why.** Two latencies are reported separately and
-> neither is hidden. **Retrieval-pipeline latency** — guardrails, query embedding, dense +
-> lexical search, fusion — is the number held to the task's <200ms bar. **Full-pipeline
-> latency** adds LLM generation and the post-generation groundedness check. Generation
-> latency is a third-party provider's time-to-first-token; no client-side engineering
-> moves it, so folding it into the headline number would measure Anthropic's
-> infrastructure rather than this pipeline. Both numbers are in the benchmark output and
-> in the demo UI on every request. This interpretation is stated up front rather than
-> buried, because it is the one place this build interprets the task instead of following
-> it. (`DECISIONS.md` D5.)
+Two latencies, both reported, neither hidden.
+
+**Retrieval-pipeline latency** — guardrails, query embedding, dense + lexical search, fusion.
+This is the one held to the task's bar.
+
+**Full-pipeline latency** adds LLM generation and the groundedness check on top.
+
+The split isn't a dodge. Generation latency is a third-party provider's time-to-first-token —
+nothing we write moves it, so folding it into the headline would mean reporting Anthropic's
+infrastructure as if it were our pipeline. Both numbers are in the benchmark output and on
+screen in the demo for every request. Worth flagging because it's the one place this build
+interprets the task rather than just following it. (`DECISIONS.md` D5.)
+
+> **Heads up on the full-pipeline figure in this repo.** The run that produced these numbers
+> had no `ANTHROPIC_API_KEY`, so generation fell back to extractive mode — a string slice —
+> and "full pipeline" collapsed onto retrieval at 99.05 ms. Calling that end-to-end answer
+> latency would be a lie, so the benchmark detects the case and marks the result
+> `"full_pipeline_includes_llm": false`. Set the key, re-run
+> `python -m benchmarks.latency --n 50`, and you'll get a real one.
 
 ---
 
-## Quick start
+## Running it
 
 ```bash
 python -m venv .venv && .venv/Scripts/activate      # Windows
@@ -88,7 +91,7 @@ python -m retrieval.build_index --limit 1500 --out index_store
 python -m demo.app                                   # http://localhost:8000
 ```
 
-The index build takes ~13 minutes for 15k chunks. For a fast smoke test:
+Building the index takes about 13 minutes for 15k chunks. If you just want to poke at it:
 
 ```bash
 python -m retrieval.build_index --limit 200 --out index_dev
@@ -97,133 +100,165 @@ python -m demo.cli --demo-suite --index index_dev
 
 ### Keys
 
-| Variable | Required for | Without it |
+| Variable | Needed for | If it's missing |
 |---|---|---|
 | `SARVAM_API_KEY` | the voice path | STT returns a typed `CONFIG` error — **never** a fake transcript |
-| `ANTHROPIC_API_KEY` | generated answers | falls back to labelled `extractive` mode (verbatim top passage) |
+| `ANTHROPIC_API_KEY` | generated answers | drops to labelled `extractive` mode (top passage, verbatim) |
 
-Neither key is needed to run the retrieval benchmark or the guardrail tests.
+Neither is needed to run the retrieval benchmark or the guardrail tests.
+
+Deploying is its own thing — see [`../DEPLOY.md`](../DEPLOY.md). Short version: Vercel can't
+run the backend (250 MB function limit against a ~375 MB payload), Render can.
 
 ---
 
-## What runs where
+## How it works
 
 ### The dataset
 
-`load_dataset("ai4bharat/MSMARCO-XI", "hi")` does not work — the repo
-is a flat set of per-language parquet files rather than named configs, so `data/loader.py`
-addresses `validation/hinval.parquet` directly and caches an extracted slice as JSONL. The
-`validation` split is used because the Hindi train parquet is 3.7GB against 462MB for
-validation with an identical schema, and nothing in this system is trained — the corpus is
-a retrieval corpus, so the train/validation distinction carries no methodological weight.
+`load_dataset("ai4bharat/MSMARCO-XI", "hi")` doesn't work. The repo isn't exposed as named
+language configs — it's a flat set of per-language parquet files — so `data/loader.py` goes
+straight at `validation/hinval.parquet` and caches an extracted slice as JSONL.
+
+We read `validation` rather than `train` because the Hindi train parquet is a single 3.7 GB
+file against 462 MB for validation, with an identical schema. Downloading 3.7 GB to slice
+1,500 examples off the front is a bad trade, and nothing here is trained anyway — this is a
+retrieval corpus, so the train/validation split carries no methodological weight.
 
 ### Speech-to-text — Sarvam, streaming
 
-`stt/sarvam_client.py` talks to Sarvam's **WebSocket streaming** endpoint, not the batch
-one. Sarvam over ElevenLabs because the dataset is AI4Bharat's Indic retrieval benchmark
-and the demo is spoken by an India-based team: Sarvam is tuned for Indic phonetics and
-code-mixed Hindi-English, which is exactly the audio it will receive.
+`stt/sarvam_client.py` uses Sarvam's **WebSocket streaming** endpoint, not the batch one.
 
-The batch REST endpoint exists as a **labelled** fallback — a `wss://` handshake is the
-most environment-fragile call in the pipeline, and some proxies and PaaS egress rules
-block it while allowing HTTPS. When the fallback fires, `Transcript.transport` reads
+Sarvam over ElevenLabs because the dataset is AI4Bharat's Indic retrieval benchmark and the
+demo gets spoken by an India-based team. Sarvam is tuned for Indic phonetics and code-mixed
+Hindi-English, which is exactly what it's going to hear.
+
+The batch REST endpoint stays as a **labelled** fallback. A `wss://` handshake is the most
+environment-fragile call in the whole pipeline — corporate proxies and some PaaS egress rules
+block it while letting HTTPS through. When the fallback fires, `Transcript.transport` reads
 `"batch"`, so a demo never claims to be streaming when it wasn't.
 
-**There is no typed-text substitute for the voice stage.** If the key is missing, STT
-returns a typed error. `Transcript.is_real_audio` is set only by code paths that pushed
-audio bytes to a recogniser, and the UI shows it.
+**There's no typed-text shortcut anywhere in the voice stage.** A missing key gets you a
+typed error, not a substitute. `Transcript.is_real_audio` is set only by code paths that
+pushed actual audio bytes at a recogniser, and the UI shows it.
 
-The browser encodes 16kHz mono WAV itself through the Web Audio API instead of using
-`MediaRecorder`. Chrome's `MediaRecorder` emits WebM/Opus, which libsndfile cannot
-demux; the alternatives were installing ffmpeg on the deploy host and transcoding in the
-request path, or encoding the format the recogniser wants where the samples already are.
-The client also rejects silence and sub-0.4s clips before spending an STT call — a
-recorder that captured nothing is the commonest way a "voice-enabled" demo turns out to
-be silent.
+In the browser we encode 16 kHz mono WAV ourselves through the Web Audio API instead of using
+`MediaRecorder`. Chrome's `MediaRecorder` emits WebM/Opus and libsndfile has no WebM demuxer,
+so the choice was either installing ffmpeg on the deploy host and transcoding inside the
+request, or just encoding the right format where the samples already live. The client also
+throws out silence and sub-0.4s clips before spending an STT call — a recorder that captured
+nothing is the single most common way a "voice-enabled" demo turns out silent.
 
-### Chunking — four strategies, compared
+### Chunking — four strategies, and we measured them
 
 | Strategy | What it does | Why it's here |
 |---|---|---|
 | `fixed_size` | 256 tokens, ~18% overlap | Baseline. Cheap recall floor. |
-| `semantic` | Splits at embedding-similarity breakpoints between sentences | Chunks don't cut mid-idea |
-| `recursive` | Paragraph → sentence → token fallback | Respects natural boundaries; the general-purpose splitter |
-| `metadata_aware` | Treats each MSMARCO passage as a natural chunk, attaching `query_id`, `passage_idx`, `source_lang`, `is_selected` | The corpus is *already* segmented by humans; re-splitting it discards that |
+| `semantic` | Splits at embedding-similarity breakpoints between sentences | Chunks don't get cut mid-idea |
+| `recursive` | Paragraph → sentence → token fallback | Respects natural boundaries |
+| `metadata_aware` | Each MSMARCO passage as a chunk, carrying `query_id`, `passage_idx`, `source_lang`, `is_selected` | The corpus is *already* segmented by humans — re-splitting throws that away |
 
-`python -m benchmarks.chunking_comparison` scores all four — plus the shipped ensemble —
-on **recall@5** and **MRR** against the dataset's own `is_selected` relevance labels, and
-reports chunk count and embedding cost next to the quality numbers so a strategy that
-wins recall by tripling the index is visible as such. Results in
-`benchmarks/chunking_comparison.json`.
+`python -m benchmarks.chunking_comparison` scores all four against the dataset's own
+`is_selected` relevance labels. Measured over 250 examples and 60 queries:
 
-The shipped index uses `metadata_aware + recursive` (`chunking/registry.py:DEFAULT_ENSEMBLE`).
-Cross-strategy duplicates are deduplicated at build time — running several splitters over
-the same corpus produces heavy overlap, and indexing the same text five times inflates the
-index while making retrieval return five copies of one passage.
+| strategy | chunks | recall@5 | MRR | embed time |
+|---|---|---|---|---|
+| **semantic** | 3,771 | **0.967** | **0.770** | 181.9 s |
+| fixed_size | 2,557 | 0.950 | 0.752 | 117.0 s |
+| recursive | 2,505 | 0.950 | 0.757 | 116.6 s |
+| metadata_aware | 2,505 | 0.950 | 0.759 | 123.2 s |
+| ensemble (shipped) | 2,530 | 0.950 | 0.752 | 124.4 s |
+| ensemble (all four) | 5,110 | **0.917** | 0.743 | 218.9 s |
+
+Two things fall out of that table, and neither is what we expected going in.
+
+**Throwing everything in makes it worse.** The all-four ensemble scores 0.917 — below every
+individual strategy. More chunks means near-duplicate versions of the same passage from
+different splitters, and those duplicates eat top-5 slots the actually-relevant passage
+needed. "Vast chunking" doesn't mean stacking splitters.
+
+**Semantic wins, and the shipped index doesn't use it.** That's a real gap, so here's the
+honest reason: semantic chunking embeds every sentence in the corpus in one batched pass, and
+at 1,500 examples that allocation dies on this machine — we tried, it OOM'd inside an ONNX
+MatMul. It's fine at the 250-example benchmark scale. Closing the gap means windowing that
+pass, which is a genuine fix and not one to rush the night before a deadline. So the shipped
+index runs `metadata_aware + recursive` (`chunking/registry.py:DEFAULT_ENSEMBLE`) and gives up
+1.7 points of recall@5 for something that reliably builds.
+
+Cross-strategy duplicates get deduplicated at build time regardless — running several
+splitters over one corpus produces heavy overlap, and indexing the same text five times just
+inflates the index and returns five copies of one passage.
 
 ### Retrieval — hybrid, in-process
 
-Dense search over FAISS `IndexFlatIP` fused with BM25 by **reciprocal rank fusion**.
+Dense search over FAISS `IndexFlatIP`, fused with BM25 by reciprocal rank fusion.
 
-*Exact, not approximate.* At ~15k vectors an exact search is one matmul in well under a
-millisecond, so an ANN index buys no measurable time while costing recall — and that
-recall loss would shift the score distribution the confidence guardrail thresholds
-against, making the guardrail a function of the index's approximation error.
+**Exact, not approximate.** At ~15k vectors an exact search is one matmul in well under a
+millisecond, so an ANN index buys no measurable time and costs recall. Worse, that recall loss
+would shift the score distribution the confidence guardrail thresholds against — making a
+safety property depend on the index's approximation error.
 
-*In-process, not hosted.* Pinecone or Qdrant Cloud add 20–100ms of network round-trip
-before any compute. The <200ms budget does not survive that.
+**In-process, not hosted.** Pinecone or Qdrant Cloud add 20–100 ms of round-trip before any
+compute happens. A 200 ms budget doesn't survive that.
 
-*RRF, not a weighted score blend.* Cosine is bounded in [-1, 1]; BM25 is unbounded and
-corpus-dependent. Any `α·dense + (1-α)·bm25` needs a normalisation that must be re-tuned
-per corpus. RRF fuses on rank and needs none. The cost is that fused scores have no
-absolute meaning — which is why `ScoredChunk` keeps `dense_score` separately, and the
-confidence gate thresholds on raw cosine only.
+**RRF, not a weighted blend.** Cosine lives in [-1, 1]; BM25 is unbounded and
+corpus-dependent. Any `α·dense + (1-α)·bm25` needs a normalisation you have to re-tune per
+corpus. RRF fuses on rank and needs none. The cost is that fused scores mean nothing in
+absolute terms — which is exactly why `ScoredChunk` keeps `dense_score` separately and the
+confidence gate reads raw cosine.
 
-**BM25 is hand-rolled rather than `rank_bm25`.** `BM25Okapi.get_scores` scans every
-document for every query term — measured at 3.25ms per query on 3k chunks and scaling
-linearly, which would be ~20ms at full corpus size. An inverted index touches only
-documents containing a query term: **0.12ms, a 27× improvement.** The IDF form also
-differs deliberately: `log(1 + (N-df+0.5)/(df+0.5))` rather than the textbook
-`log((N-df+0.5)/(df+0.5))`, which goes *negative* for terms appearing in more than half
-the corpus and lets a common word push documents down the ranking.
+**BM25 is hand-written, not `rank_bm25`.** `BM25Okapi.get_scores` walks every document for
+every query term. Measured at 3.25 ms per query on 3k chunks and scaling linearly, that's
+~20 ms at full corpus size. An inverted index only touches documents that actually contain a
+query term: **0.12 ms, 27× faster.** The IDF form differs too, and not by accident —
+`log(1 + (N-df+0.5)/(df+0.5))` instead of the textbook `log((N-df+0.5)/(df+0.5))`, which goes
+*negative* for terms appearing in more than half the corpus and lets a common word drag
+documents down the ranking.
 
-### Harness
+### The harness
 
 `harness/orchestrator.py`. Not a function that calls an LLM:
 
-- **Structured I/O everywhere.** Every stage returns `StageResult[T]` — a typed value or a
-  typed `StageError`, plus its elapsed time. Nothing raises across a stage boundary.
-- **Retries that discriminate.** `ErrorKind` separates `TRANSIENT`/`RATE_LIMITED` (retry)
-  from `AUTH`/`CONFIG`/`VALIDATION` (don't — retrying a rejected API key spends latency to
-  fail identically). Backoff uses **full jitter**, because the benchmark fires 50 queries
-  in a loop and un-jittered retries re-collide on every attempt. Retries also honour a
-  **deadline**, since three attempts against a hung socket is a correct retry policy and
-  a failed demo simultaneously.
-- **Per-stage error handling.** A failed STT call yields a structured error response with
-  timings intact. A failed generator still returns the retrieved context.
-- **Failure paths are timed too** — a stage that took four seconds to fail is exactly what
-  a latency-graded pipeline needs to see.
-- **The query is embedded once** and threaded through the guardrails and both retrievers.
-  At ~104ms per embedding, embedding twice would blow the budget on its own.
+- **Typed I/O everywhere.** Every stage returns `StageResult[T]` — a value or a typed
+  `StageError`, plus elapsed time. Nothing raises across a stage boundary.
+- **Retries that discriminate.** `ErrorKind` splits `TRANSIENT`/`RATE_LIMITED` (retry) from
+  `AUTH`/`CONFIG`/`VALIDATION` (don't — retrying a rejected API key just spends latency to
+  fail the same way). Backoff uses **full jitter**, because the benchmark fires 50 queries in
+  a tight loop and un-jittered retries collide on every attempt. There's a **deadline** too,
+  since three attempts against a hung socket is a correct retry policy and a dead demo at the
+  same time.
+- **Per-stage error handling.** Failed STT gives you a structured error with timings intact.
+  A failed generator still returns what retrieval found.
+- **Failure paths get timed too** — a stage that took four seconds to fail is precisely what a
+  latency-graded pipeline needs to be able to see.
+- **The query gets embedded once** and threaded through the guardrails and both retrievers. At
+  ~104 ms a pop, embedding twice would blow the budget on its own.
 
-### Guardrails — four, at three positions
+### Guardrails — four of them, three positions
 
 | # | Guardrail | Position | Catches |
 |---|---|---|---|
 | 1 | `input_safety` | pre-retrieval | Harm-seeking phrasing, prompt injection, absurd transcript length |
 | 2 | `language_mismatch` | pre-retrieval | Queries in a script the corpus isn't written in |
-| 3 | `low_confidence` | post-retrieval, pre-generation | The corpus does not contain the answer |
-| 4 | `groundedness` | post-generation | The model had good context and drifted anyway |
+| 3 | `low_confidence` | post-retrieval, pre-generation | The corpus doesn't contain the answer |
+| 4 | `groundedness` | post-generation | Model had good context and drifted anyway |
 
 Every trip returns `{status: "declined", reason: "<guardrail>", ...}` with the score, the
-threshold, and a human-readable explanation. A decline is a designed outcome, never a
-crash and never a silent empty answer. Guardrails fail **open** if they error internally —
-they are quality gates over a public Q&A demo, not a security boundary — except
-`input_safety`, which fails closed, since withholding is its entire purpose.
+threshold, and a human-readable explanation. A decline is a designed outcome — never a crash,
+never a silently empty answer.
 
-**One guardrail was built, measured, and deleted.** Guardrail 2 was originally an
-embedding-based off-topic detector scoring queries against the corpus centroid. Measured
-on the real index, it was *inverted*:
+They fail **open** if they break internally, because these are quality gates on a public Q&A
+demo, not a security boundary. The exception is `input_safety`, which fails closed —
+withholding is the entire point of that one.
+
+Guardrails 1 and 2 both run **before** the query is embedded. That ordering matters more than
+it sounds: embedding is ~95 ms of a ~99 ms budget, so a refusal that happens after the embed
+saves nothing. Measured, a blocked injection now costs **0.0–0.1 ms** instead of ~90 ms.
+
+#### One of these was built, measured, and thrown away
+
+Guardrail 2 started life as an embedding-based off-topic detector scoring queries against the
+corpus centroid. On the real index it turned out to be **inverted**:
 
 | query | centroid sim | max-sim to corpus |
 |---|---|---|
@@ -232,52 +267,89 @@ on the real index, it was *inverted*:
 | "asdkjh qwe zxcvbn" (gibberish) | **0.184** | 0.381 |
 | "aaaaa bbbbb ccccc" (gibberish) | 0.234 | 0.398 |
 
-Real questions scored *below* gibberish. That is structural, not a bad threshold: a
-centroid points in the "average passage" direction, so similarity to it measures how
-generic a text is, not how on-topic — and a specific question is nearly orthogonal to the
-mean. No threshold repairs an inverted signal.
+Real questions scored *below* gibberish. That's structural, not a bad threshold: a centroid
+points in the direction of the average passage, so similarity to it measures how *generic*
+something is, not how on-topic — and a specific question is nearly orthogonal to the mean. No
+threshold repairs a signal pointing the wrong way.
 
-The column that *does* separate them is max-similarity over the corpus, which is exactly
-the top dense score guardrail 3 already thresholds. So semantic off-topic detection is
-guardrail 3's job, done with the real score rather than a proxy, and a second semantic
-gate would have been a less precise duplicate rather than an independent check.
+The column that does separate them is max-similarity over the corpus, which is exactly the top
+dense score guardrail 3 already thresholds. So semantic off-topic detection belongs to
+guardrail 3, working from the real score instead of a proxy. A second semantic gate would have
+been a blurrier copy of one we already run, not an independent check.
 
-What replaced it catches a failure guardrail 3 provably cannot. The English query *"what
-is the capital of france"* scores **0.628** against the Hindi corpus — above the 0.42
-confidence threshold — because a multilingual embedder maps it near Hindi passages about
-countries, and MS MARCO genuinely contains them. Unguarded, it receives a confident answer
-synthesised from passages that were never about it. The script check catches it in ~0.02ms
-with no embedding at all. Romanised Hindi (*"bharat ki rajdhani kya hai"*) is exempted,
-because Sarvam transcribes code-mixed speech and a Hinglish transcript is not a mismatch.
+What replaced it catches something guardrail 3 provably can't. The English query *"what is the
+capital of france"* scores **0.628** against the Hindi corpus — comfortably above the
+confidence threshold — because a multilingual encoder maps it near Hindi passages about
+countries, and MS MARCO genuinely has those. Left alone it gets a confident answer built from
+passages that were never about it. A script check catches it in ~0.02 ms with no embedding at
+all. Romanised Hindi (*"bharat ki rajdhani kya hai"*) is exempted, since Sarvam transcribes
+code-mixed speech and Hinglish isn't a mismatch.
 
-The confidence gate requires **two** signals, not one: an absolute top cosine score, and a
-**margin** over the mean of the remaining chunks. A query the corpus answers produces a
-peaked score distribution; one it cannot produces a flat one. A flat distribution at a
-respectable absolute level is the signature of "this corpus is vaguely about the topic but
-holds no answer" — which an absolute threshold alone waves straight through.
+#### The confidence gate needed rebuilding too
 
-Thresholds are calibrated against real data, not guessed:
-`python -m benchmarks.calibrate_thresholds` scores answerable dataset queries against
-held-out, out-of-domain, and gibberish queries, and reports whether the populations
-actually separate. If they overlap it says so rather than picking a decisive-looking
-number — a confident threshold over overlapping distributions is a guardrail that fires at
+It thresholded on dense cosine alone. Calibrated against the real index, that was close to
+useless:
+
+| population | n | min | p05 | median | p95 | max |
+|---|---|---|---|---|---|---|
+| answerable | 60 | 0.472 | 0.547 | 0.675 | 0.837 | 0.860 |
+| held-out | 30 | 0.450 | 0.513 | 0.624 | 0.702 | 0.747 |
+| out-of-domain | 6 | 0.576 | 0.583 | 0.611 | 0.652 | 0.662 |
+| gibberish | 6 | 0.655 | 0.672 | **0.774** | 0.831 | 0.845 |
+
+Gibberish — random Devanagari syllables — scored a **higher median cosine than real
+questions**. The best dense-only threshold (0.67) blocks 78.6% of unanswerable queries by also
+refusing **47% of real ones**. Unusable.
+
+The lexical signal separates them outright:
+
+| population | n | top BM25: min | median | max | scoring zero |
+|---|---|---|---|---|---|
+| answerable | 60 | 8.54 | 20.28 | 43.33 | **0/60** |
+| held-out | 30 | 0.00 | 13.26 | 23.38 | 1/30 |
+| out-of-domain | 6 | 12.76 | 16.47 | 19.38 | 0/6 |
+| gibberish | 6 | 0.00 | 0.00 | 0.00 | **6/6** |
+
+Every gibberish query scores exactly zero, because none of its tokens exist anywhere in the
+corpus. Every one of the 60 answerable queries matched something. Requiring BM25 > 0 blocks 7
+of 42 unanswerable queries at **zero false refusals** — and it's free, since hybrid retrieval
+already computes the number.
+
+So the gate wants three things: lexical support, a top cosine above 0.45 (just under the
+observed answerable minimum of 0.472 — deliberately permissive, since the dense populations
+overlap too much for a higher bar to be worth its false-refusal cost), and a **margin** over
+the mean of the remaining chunks. A query the corpus answers gives a peaked score
+distribution; one it can't gives a flat one, and a flat distribution at a respectable absolute
+level is the signature of "vaguely on topic, no actual answer."
+
+**What it still can't do**, stated rather than buried: plausible Hindi questions the corpus
+has no answer to ("मेरा पासवर्ड क्या है?") score 0.576–0.662 cosine and 12.8–17.9 BM25 —
+inside the answerable range on both. They're built from ordinary Hindi words that really do
+appear across a web corpus, so no retrieval-score threshold separates them without refusing
+real questions too. Catching those is what the generator's `NO_ANSWER` refusal and the
+groundedness check are for. This gate is one layer of three.
+
+Thresholds get regenerated by `python -m benchmarks.calibrate_thresholds`, which reports
+whether the populations actually separate instead of always emitting a confident-looking
+number. A decisive threshold over overlapping distributions is a guardrail that fires at
 random.
 
 ### Generation
 
-Claude Haiku 4.5, `temperature=0`, with a prompt that forces grounding, authorises
-refusal (`NO_ANSWER`), demands `[n]` citations, and pins the answer's language to the
-question's. Retrieved passages are numbered and delimited and the model is told they are
-reference material — corpus text is web-scraped and untrusted, and a passage containing
-"ignore the above" must read as data.
+Claude Haiku 4.5, `temperature=0`, prompted to ground its answer, allowed to refuse via
+`NO_ANSWER`, required to cite `[n]`, and pinned to the question's language.
 
-A `NO_ANSWER` reply is **not** an error. It is the model using the refusal the prompt
-authorises, and the orchestrator converts it into the same typed decline a guardrail
-produces, so a user cannot tell which component noticed the corpus fell short.
+Retrieved passages are numbered and delimited, and the model is told they're reference
+material. Corpus text is scraped from the web and untrusted — a passage containing "ignore the
+above" has to read as data, not instruction.
 
-Without `ANTHROPIC_API_KEY`, generation degrades to `extractive` mode — the top passage,
-verbatim, labelled `mode: "extractive"` in the response and in the UI. A copied passage is
-never presented as a generated answer.
+`NO_ANSWER` isn't an error. It's the model using the refusal the prompt authorises, and the
+orchestrator turns it into the same typed decline a guardrail produces, so a user can't tell
+which component noticed the corpus fell short.
+
+Without `ANTHROPIC_API_KEY`, generation drops to `extractive` — top passage, verbatim, labelled
+`mode: "extractive"` in the response and on screen. A copied passage never gets presented as a
+generated answer.
 
 ---
 
@@ -290,24 +362,53 @@ python -m benchmarks.chunking_comparison               # recall@5 + MRR per stra
 python -m benchmarks.calibrate_thresholds              # confidence-gate calibration
 ```
 
-Three choices keep the latency benchmark honest:
+Three deliberate choices keep the latency benchmark honest:
 
-- **Queries come from the dataset**, sampled from the corpus that was actually indexed —
-  not a hand-picked list of questions known to work.
+- **Queries come from the dataset**, sampled from the corpus that was actually indexed — not a
+  hand-picked list of questions known to work.
 - **Warmup runs are excluded and reported.** The first ONNX inference pays graph
-  initialisation; including it makes P100 a cold-start measurement, and dropping it
-  silently would hide a real cost.
-- **Declines are counted, not discarded.** A guardrail decline is a fast path — removing
-  those runs would lower every percentile by deleting the cheapest requests. They stay in
-  the sample, and the decline rate is reported next to the percentiles, so a suspiciously
-  fast P50 is visible as a high decline rate rather than mistaken for speed.
+  initialisation; leaving it in makes P100 a cold-start measurement, dropping it quietly hides
+  a real cost.
+- **Declines are counted, not discarded.** A guardrail decline is a fast path, so removing
+  those runs would drag every percentile down by deleting the cheapest requests. They stay in,
+  and the decline rate sits next to the percentiles — so a suspiciously fast P50 shows up as a
+  high decline rate instead of looking like speed.
 
-P100 is the true maximum (nearest-rank), not an interpolated percentile that reports a
-number no request ever took.
+P100 is the true maximum (nearest-rank), not an interpolated percentile reporting a number no
+request ever took.
 
 ---
 
-## Repo layout
+## The web UI
+
+`demo/index.html`, served by FastAPI at `/`. Boxy and minimal on purpose — 2px corners, 1px
+rules, a faint grid, and type doing most of the work.
+
+- **Cal Sans** for display headings, **JetBrains Mono** for body and data, **Disket Mono**
+  (falling back to Space Mono) for labels and numbers, **Noto Sans Devanagari** for all Hindi
+  content. That last one isn't optional: neither JetBrains Mono nor Cal Sans has Devanagari
+  glyphs, and every passage in this system is Hindi.
+- **Fluid from 320px to 3840px.** Every type step and spacing unit is a `clamp()` interpolating
+  across exactly that range, which is why there's essentially one breakpoint in the whole
+  stylesheet. Verified at 320, 768 and 3840 — no horizontal overflow, 44px tap targets at the
+  small end, content capped at 1728px at the large end so it doesn't stretch into nonsense.
+- **Micro-animations** on anything interactive: a bouncy overshoot easing
+  (`cubic-bezier(0.34, 1.56, 0.64, 1)`) reserved for things you pressed, a flatter curve for
+  ambient motion, staggered reveals on results. All of it collapses under
+  `prefers-reduced-motion`.
+- **Wide content scrolls inside its own box.** Tables get a horizontal scroller rather than
+  pushing the page sideways.
+
+The response pane shows the whole trace — every guardrail verdict with score and threshold,
+per-stage timings with percentage share, retrieved passages with both scores, and the raw JSON.
+A voice RAG demo that only shows its answer is indistinguishable from one that made it up.
+
+Fonts are documented in `demo/fonts/README.md`. `demo/config.js` retargets the UI at a
+different backend origin if you split the frontend off.
+
+---
+
+## Layout
 
 ```
 V{X.Y}/
@@ -325,36 +426,29 @@ V{X.Y}/
 ## Versioning
 
 Every phase of work is a numbered snapshot under `master_repo/V{MAJOR}.{MINOR}/`, with
-`master_repo/VERSION` pointing at the current one and `master_repo/CHANGELOG.md` carrying
-a dated, file-by-file entry for each bump. Older version folders are frozen on bump and
-never edited again. `bump.sh` performs the mechanical part.
+`master_repo/VERSION` pointing at the current one and `master_repo/CHANGELOG.md` carrying a
+dated, file-by-file entry per bump. Old version folders get frozen on bump and never touched
+again. `bump.sh` handles the mechanical part.
 
-## Deployment
+## What this doesn't do well
 
-`Dockerfile` builds the index **into the image** rather than at container start —
-embedding 15k chunks takes ~13 minutes, and doing it on boot means serving 503s until a
-platform health check kills the container. `render.yaml` is a ready blueprint; the
-`starter` plan is specified deliberately, as 512MB is not enough for the index plus the
-ONNX session.
+- The groundedness check is lexical overlap by default, not entailment. It catches invented
+  entities and fabricated figures. It won't catch a wrong *inference* drawn from words that
+  were genuinely in the context. There's an opt-in LLM entailment path (`use_llm=True`) that
+  costs a second round-trip.
+- `input_safety` is pattern-based. Overt harm-seeking and injection phrasing, yes. Obfuscated
+  or adversarially-worded attacks, no. It's a first-line filter for a public demo, not a
+  moderation system.
+- The shipped index uses `metadata_aware + recursive`, giving up 1.7 points of recall@5 to
+  `semantic`, because semantic chunking's corpus-wide sentence-embedding pass OOMs at
+  production scale here. Fixable by windowing that pass; not fixed yet.
+- Query embedding is ~95 ms of the ~99 ms budget. Everything else together is under 2 ms.
+  Making this meaningfully faster means a smaller embedding model, not micro-optimising search.
 
-## Honest limitations
+## Also see
 
-- The groundedness check is lexical-overlap by default, not entailment. It catches
-  invented entities and fabricated figures; it will not catch a wrong *inference* drawn
-  from words that are present in the context. An opt-in LLM entailment path exists
-  (`use_llm=True`) and costs a second round-trip.
-- `input_safety` is pattern-based. It catches overt harm-seeking and injection phrasing,
-  not obfuscated or adversarially-worded attacks. It is a first-line filter for a public
-  demo, not a moderation system.
-- Semantic off-topic rejection happens *after* retrieval, not before. Since retrieval is
-  ~0.5ms of a ~105ms budget, the early-exit saving would have been negligible — and as
-  measured above, the cheap pre-retrieval proxy did not work.
-- Query embedding is ~104ms of the retrieval budget. Everything else together is under
-  2ms. Making this pipeline meaningfully faster means a smaller embedding model, not
-  micro-optimising search.
-
-## References
-
-- `DECISIONS.md` — every design call with its rationale, including the ones revised after
-  measurement
+- `DECISIONS.md` — every design call and its reasoning, including the ones revised after
+  measuring
 - `../CHANGELOG.md` — full version history
+- `../DEPLOY.md` — deployment, and why Vercel can't host the backend
+- `../HANDOFF.md` — what's left, and what it needs from a human

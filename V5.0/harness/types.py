@@ -186,7 +186,7 @@ class Answer(BaseModel):
 
 class ResponseStatus(str, Enum):
     ANSWERED = "answered"
-    DECLINED = "declined"   # a guardrail deliberately refused — a designed outcome
+    DECLINED = "declined"   # a guardrail chose to refuse — a designed outcome
     ERROR = "error"         # a stage failed — surfaced, not hidden
 
 

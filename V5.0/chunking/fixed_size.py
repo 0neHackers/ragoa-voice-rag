@@ -1,6 +1,6 @@
 """Strategy 1 — fixed-size chunking with overlap. The baseline.
 
-Kept deliberately simple and deliberately *present*: it is the control the other three
+Kept simple, and kept around: it's the control the other three
 strategies are measured against. Its weakness is the reason the others exist — it cuts
 mid-sentence and mid-idea, so a chunk can end up holding the first half of a claim and
 the second half of an unrelated one.

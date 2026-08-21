@@ -158,7 +158,7 @@ def _row_to_example(row: dict[str, Any], lang: str) -> Example | None:
 # --------------------------------------------------------------------------- #
 
 def _cache_path(lang: str, split: str, cache_dir: Path) -> Path:
-    """One cache file per (lang, split) — deliberately not per-limit.
+    """One cache file per (lang, split), not per-limit — that's intentional.
 
     Keying the cache on `limit` too would mean every new corpus size re-reads the
     parquet, and that read is the single slowest step in the whole build (~5 min for

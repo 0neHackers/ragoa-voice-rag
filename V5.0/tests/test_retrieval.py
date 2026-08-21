@@ -174,7 +174,7 @@ class TestLexical:
         assert hits and hits[0].idx == 30
 
     def test_idf_stays_positive_on_a_degenerate_corpus(self):
-        """The `log(1 + ...)` IDF form, pinned deliberately.
+        """The `log(1 + ...)` IDF form, pinned here so it can't drift back.
 
         The textbook Okapi IDF, `log((N - df + 0.5) / (df + 0.5))`, is *zero* for a term
         in one of two documents and goes negative for terms in more than half the

@@ -170,7 +170,7 @@ class SarvamSTT:
                     kind=ErrorKind.CONFIG,
                     message=(
                         "SARVAM_API_KEY is not set. Speech-to-text cannot run. This pipeline "
-                        "deliberately has no typed-text substitute for the voice stage — set "
+                        "has no typed-text substitute for the voice stage, by design — set "
                         "the key in .env (see .env.example)."
                     ),
                 ),
@@ -353,7 +353,7 @@ class TransientHTTPError(RuntimeError):
 def _extract_transcript(msg: dict) -> tuple[str, bool]:
     """Pull text out of a streaming frame.
 
-    Written tolerantly on purpose: Sarvam has shipped more than one frame shape across
+    Written tolerantly, and for a reason: Sarvam has shipped more than one frame shape across
     model versions (`{"type":"data","data":{"transcript":...}}` and flatter variants),
     and a demo should not die because a key moved one level.
     """

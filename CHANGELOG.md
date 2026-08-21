@@ -280,3 +280,62 @@ WebM/Opus, which libsndfile cannot demux, and the alternative was an ffmpeg depe
 the deploy host plus a transcode in the request path. The client encodes 16kHz mono WAV
 directly and rejects silence and sub-0.4s clips before spending an STT call.
 **Supersedes:** V4.0
+
+## V5.1 — 2026-08-21
+**Type:** Major
+**Summary:** Rebuilt the web UI (boxy minimal, fluid 320–3840px, micro-animations), added
+deployment docs covering the Vercel constraint, recorded the chunking-comparison results,
+and did a prose pass across the docs and docstrings.
+**Files changed:**
+- `demo/index.html` — rewritten. Cal Sans / JetBrains Mono / Disket Mono (Space Mono
+  fallback) / Noto Sans Devanagari type system; `clamp()` fluid scale; bouncy easing on
+  interactive elements; `prefers-reduced-motion` and light-scheme support; configurable
+  `__API_BASE__`; per-stage timing shares; chip clipping fix.
+- `demo/config.js` — new. Retargets the UI at a non-same-origin backend.
+- `demo/fonts/README.md` — new. Disket Mono drop-in instructions.
+- `demo/app.py` — mounts `/fonts` via `StaticFiles`.
+- `../DEPLOY.md` — new. Render / Vercel+Render / HF Spaces paths, GitHub push, pre-submit
+  checklist.
+- `../HANDOFF.md` — rewritten; consolidated "what I need from you" list.
+- `README.md` — rewritten; chunking-comparison results and UI section added.
+- `DECISIONS.md`, `chunking/*.py`, `data/loader.py`, `generation/generator.py`,
+  `guardrails/groundedness.py`, `harness/types.py`, `stt/sarvam_client.py` — prose pass.
+- `tests/test_demo_api.py` — `test_root_serves_the_ui` now asserts the Devanagari font link
+  and the API-base hook rather than the old heading text. Suite still 163, all passing.
+**Details:**
+**Chunking comparison, finally measured** (250 examples, 60 queries, recall@5 against the
+dataset's own `is_selected` labels): semantic 0.967 / MRR 0.770, fixed_size 0.950 / 0.752,
+recursive 0.950 / 0.757, metadata_aware 0.950 / 0.759, shipped ensemble 0.950 / 0.752, and
+**all four together 0.917** — worse than any single strategy. Stacking splitters produces
+near-duplicate chunks that occupy top-5 slots the relevant passage needed. That result is
+now in the README, because "chunking should be vast" is easy to misread as "use more
+splitters" and the data says otherwise.
+Semantic won and is still not the shipped default. Tried to rebuild the production index on
+it; the corpus-wide sentence-embedding pass died inside an ONNX MatMul with a bad allocation
+at 1,500 examples, though it is fine at the 250-example benchmark scale. Fixing it means
+windowing that pass, which is a real change and not one to make hours before a deadline, so
+the shipped ensemble stays `metadata_aware + recursive` and gives up 1.7 points of recall@5
+for something that builds reliably. Both the finding and the gap are documented rather than
+quietly dropped.
+**Vercel cannot host this backend, and the numbers are in `DEPLOY.md`.** Measured payload:
+onnxruntime 45MB + numpy 34MB + faiss 15MB + fastembed 2MB, the embedding model ~240MB, the
+index 38MB. Serverless functions cap at 250MB unzipped; even dropping pandas/pyarrow/datasets
+(build-time only) leaves ~375MB. Cold starts would also load a 240MB ONNX session per
+invocation, which is untenable for a project whose headline is a 99ms P50. The frontend can
+live on Vercel — `demo/config.js` sets `window.__API_BASE__` and CORS is already open — but
+the pipeline needs a container host. Render is the recommended single-URL path.
+**UI.** Fluid type and spacing via `clamp()` interpolated across 320–3840px, so the
+stylesheet has essentially one breakpoint. Verified by measurement at 320 / 768 / 3840: no
+page-level horizontal overflow at any of them, 44px minimum tap targets at the small end,
+shell capped at 1728px at the large end. Wide tables scroll inside their own container
+instead of pushing the page sideways.
+Fixed while building it: the embedding-model chip renders
+"paraphrase-multilingual-MiniLM-L12-v2" at 343px with `white-space: nowrap`, which forced the
+entire page into horizontal scroll at 320px. One label was setting the site's minimum width.
+**Noto Sans Devanagari was added and is not cosmetic.** Neither JetBrains Mono nor Cal Sans
+has Devanagari glyphs, and every passage and answer in this system is Hindi — without it the
+actual content falls back to whatever the OS supplies. Disket Mono is genuinely unavailable:
+Fontfabric doesn't redistribute through npm or Google Fonts, so `@font-face` points at
+`/fonts/` for a local drop-in and Space Mono stands in until then, rather than letting the
+stack collapse silently to a default sans.
+**Supersedes:** V5.0

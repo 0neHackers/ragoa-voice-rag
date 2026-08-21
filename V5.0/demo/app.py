@@ -31,6 +31,7 @@ from contextlib import asynccontextmanager  # noqa: E402
 
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile  # noqa: E402
 from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
+from fastapi.staticfiles import StaticFiles  # noqa: E402
 from fastapi.responses import HTMLResponse, JSONResponse  # noqa: E402
 from pydantic import BaseModel, Field  # noqa: E402
 
@@ -46,6 +47,13 @@ app = FastAPI(
     version=(Path(__file__).resolve().parent.parent / "VERSION").read_text().strip(),
     lifespan=lifespan,
 )
+
+# Serves demo/fonts/. Disket Mono has no CDN (see demo/fonts/README.md), so it has to be
+# dropped in locally; mounting the directory unconditionally means adding the file is all
+# it takes, with no code change and no redeploy of the app itself.
+_FONT_DIR = Path(__file__).resolve().parent / "fonts"
+_FONT_DIR.mkdir(exist_ok=True)
+app.mount("/fonts", StaticFiles(directory=str(_FONT_DIR)), name="fonts")
 
 app.add_middleware(
     CORSMiddleware,

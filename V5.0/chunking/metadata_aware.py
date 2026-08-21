@@ -9,7 +9,7 @@ So this strategy treats each passage as one chunk, splitting *only* when a passa
 exceeds the embedding model's useful context, and it propagates the metadata into the
 index so retrieval can filter and boost rather than relying on vector similarity alone.
 
-`is_selected` is deliberately **not** used to boost at query time. It is ground-truth
+`is_selected` is **not** used to boost at query time, and that's the point. It is ground-truth
 answer labelling, and letting it influence ranking would leak the answer key into
 retrieval and inflate every benchmark number this project reports. It is carried for
 evaluation only — measuring whether retrieval independently found the right passage.

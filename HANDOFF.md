@@ -1,154 +1,197 @@
-# Handoff — what's done, and what only you can do
+# What's done, and what I need from you
 
-Deadline: **22 August 2026, 11:59 PM IST. One submission, no resubmissions.**
+**Deadline: 22 August 2026, 11:59 PM IST. One submission — no resubmissions.**
 
 ---
 
-## Status
+## Where the build stands
 
-| Requirement | State |
+| Requirement | Status |
 |---|---|
-| Voice → STT | Built (Sarvam streaming + labelled batch fallback). **Untested against the live API — needs a key.** |
-| Chunking, 4 strategies | Done, compared on recall@5 / MRR |
-| Vector retrieval | Done — FAISS in-process, hybrid with BM25, 15,449 chunks |
-| <200ms latency | **Met: P50 99.17ms, P70 102.39ms, P100 127.53ms**, 100% within budget |
-| P50/P70/P100 over 30–50+ queries | Done, 50 real dataset queries |
-| Harness | Done — typed I/O, selective retry, per-stage error handling |
-| Guardrails | Done — 4, at 3 positions, each returning a structured decline |
-| Tests | 163, passing |
-| GitHub repo | **Not created — needs you** |
-| Live link | **Not deployed — needs you** |
-| 2 videos + social posts | **Needs you** |
+| Voice → speech-to-text | Built (Sarvam streaming, batch fallback labelled). **Never run against the live API — no key.** |
+| 4 chunking strategies | Done, and benchmarked against each other on recall@5 / MRR |
+| Vector retrieval | Done — FAISS in-process, 15,449 chunks, hybrid with BM25 |
+| Under 200ms | **Met. P50 99.17ms, P70 102.39ms, P100 127.53ms** — every query inside budget |
+| P50/P70/P100 across 30–50+ queries | Done, 50 real dataset queries |
+| Harness | Done — typed I/O, selective retries, per-stage error handling |
+| Guardrails | Done — 4 of them, 3 positions, every refusal structured |
+| Tests | 163, all passing |
+| Web UI | Rebuilt — boxy minimal, fluid 320px → 3840px, verified at each end |
+| GitHub repo | **Yours to do** |
+| Live link | **Yours to do** |
+| 2 videos + 6 social posts | **Yours to do** |
 
 ---
 
-## 1. API keys — the one real blocker
+## 1. API keys — the only thing actually blocking the build
 
-`.env` currently has empty placeholders. Nothing else is missing.
+`.env` has empty placeholders right now. Nothing else is missing.
 
 ```bash
 # master_repo/V5.0/.env
-SARVAM_API_KEY=your_key_here
-ANTHROPIC_API_KEY=your_key_here
+SARVAM_API_KEY=...
+ANTHROPIC_API_KEY=...
 ```
 
-**Why this matters for the submission.** The task requires real voice input. The Sarvam
-client is written against the documented streaming WebSocket protocol but **has never
-executed against the live API** — I had no key. The frame-parsing is written tolerantly
-(it accepts several response shapes Sarvam has shipped across model versions), but you
-must verify it before recording the demo. Budget time for this; it is the one part of the
-build that could still surprise you.
+**Please treat the Sarvam one as a real risk.** I wrote the client against the documented
+streaming WebSocket protocol, but I've never been able to run it against the live API. The
+frame parsing is deliberately tolerant — Sarvam has shipped more than one response shape
+across model versions, so it accepts several — but *tolerant* isn't *tested*. Verify it
+before you record anything:
 
 ```bash
 cd master_repo/V5.0
 python -m stt.transcribe --mic --seconds 6 --save audio_samples/test.wav
 ```
 
-Expected: your spoken Hindi comes back as a transcript, with `via streaming` in the output.
-If it says `via batch`, the WebSocket handshake failed and fell back — the transcript is
-still real, but check your network before blaming the code. If it errors, the message names
-the cause; the frame shapes are in `stt/sarvam_client.py:_extract_transcript`.
+You want your spoken Hindi back as text, with `via streaming` in the output. If it says
+`via batch`, the WebSocket handshake failed and it fell back — the transcript's still real,
+but check your network before blaming the code. If it errors outright, the message names the
+cause, and the frame shapes live in `stt/sarvam_client.py:_extract_transcript`.
 
-Without `ANTHROPIC_API_KEY` the system still answers, but in **extractive** mode — it
-returns the top retrieved passage verbatim, labelled as such in the UI and the API. That
-is honest but it is not a great demo. Set the key.
+Without `ANTHROPIC_API_KEY` the system still answers, but in **extractive** mode — it hands
+back the top retrieved passage word for word, labelled as such in the UI. That's honest, but
+it's a weak demo. Set the key.
 
-Then re-run the benchmark to get a **real** full-pipeline number:
+Then re-run the benchmark to get a real end-to-end number:
 
 ```bash
 python -m benchmarks.latency --n 50
 ```
 
-The current full-pipeline figure in `benchmarks/results_full_pipeline.json` is explicitly
-marked `"full_pipeline_includes_llm": false` because generation ran extractive. Don't quote
-it as an end-to-end latency until you've re-run it with a key.
+The current full-pipeline figure is flagged `"full_pipeline_includes_llm": false` because
+generation ran extractive. **Don't quote it as end-to-end latency until you've re-run it.**
+The retrieval number (99ms P50) is real and stands on its own.
 
 ---
 
-## 2. Deploy the live link
+## 2. Deployment
 
-The `Dockerfile` builds the index **into the image** (~13 min build, so the container is
-ready on boot rather than serving 503s while it embeds).
+Full detail in **[DEPLOY.md](DEPLOY.md)**. The short version:
 
-Render, using the included blueprint:
+- **Vercel can't run the backend.** Serverless functions cap at 250 MB; the model alone is
+  240 MB and the whole payload is ~375 MB. Not a config problem — it doesn't fit.
+- **Recommended: Render only, one URL.** FastAPI serves the page and the API together, so
+  you get one link for the form and one thing to keep alive.
+- If you do want Vercel for the frontend, set `window.__API_BASE__` in `demo/config.js` to
+  the Render URL and deploy `demo/` as a static site. CORS is already open.
 
-1. Push to GitHub (below), then New → Blueprint on Render and point it at the repo.
-2. `render.yaml` is already configured. Set `SARVAM_API_KEY` and `ANTHROPIC_API_KEY` in the
-   dashboard — they are marked `sync: false` so they are never committed.
-3. Keep the **starter** plan or larger. 512MB will OOM: the index plus the ONNX session
-   needs ~1GB.
-4. Test it cold in an incognito window before you put it in the form.
+What I need from you either way:
 
-Note the root directory: the blueprint assumes the deploy context is `master_repo/V5.0/`.
-Either set Render's root directory to that path, or copy that folder's contents to the repo
-root before pushing.
+- A **GitHub** account and repo (must be public)
+- A **Render** account, on the **starter** plan or higher — free tier's 512 MB will OOM,
+  and sleeping instances make for a bad first impression on a cold judge link
+- Both API keys entered in the Render dashboard, not in the repo
 
-**Leave the deployment up past the deadline** — the judging window is unknown.
+Budget **15–20 minutes** for the first build. The Dockerfile bakes the index into the image
+on purpose, so the container is ready the moment it boots.
 
 ---
 
-## 3. GitHub
+## 3. Fonts — one optional file
 
-The repo is committed locally at `master_repo/` with real incremental history (V0.0 → V5.0,
-one commit per phase). That history is worth keeping — Video 1 is about process, and this
-shows it.
+Three of the four faces load from CDNs automatically. **Disket Mono doesn't exist on any
+package CDN** — Fontfabric releases it directly and doesn't redistribute through npm or
+Google Fonts.
 
-```bash
-cd master_repo
-git remote add origin https://github.com/<you>/<repo>.git
-git branch -M main
-git push -u origin main
+If you have it, drop these two files in and they'll be picked up on the next reload:
+
+```
+master_repo/V5.0/demo/fonts/DisketMono-Regular.woff2
+master_repo/V5.0/demo/fonts/DisketMono-Bold.woff2
 ```
 
-Confirm `.env` is **not** in the repo (`.gitignore` covers it — verify with
-`git ls-files | grep -i env`, which should show only `.env.example`).
+Nothing breaks without them — the stack falls back to Space Mono, which has the same
+squared-off terminal character. See `demo/fonts/README.md` for converting from `.ttf`.
+
+I also added **Noto Sans Devanagari**, which you didn't ask for but the app can't do
+without: neither JetBrains Mono nor Cal Sans has Devanagari glyphs, and every passage and
+answer in this system is Hindi. Without it the actual content renders in whatever the OS
+falls back to.
 
 ---
 
-## 4. Videos and posts — every member, both platforms
+## 4. Videos
 
-- **Video 1 (90s, process):** how the team worked. The `CHANGELOG.md` and commit history
-  are good material — particularly the guardrails that were built, measured, found broken,
-  and rebuilt.
-- **Video 2 (demo):** the pipeline end to end with **real microphone audio**. Check your
-  screen recorder is capturing the mic, not just system audio — record a throwaway clip
-  first. `python -m demo.cli --demo-suite` walks every guardrail path if you want the
-  refusal behaviour on camera without improvising queries.
+- **Video 1 — 90 seconds, process.** How the team worked, not the product. `CHANGELOG.md`
+  and the commit history are good material — especially the guardrails that got built,
+  measured, found broken, and rebuilt. That's a real engineering story and it's all dated.
+- **Video 2 — the demo.** End to end, with **real microphone audio**.
 
-Both videos → Instagram **and** X → by **Shanzal, Aditya, and Kanishka individually**, not
-one shared post. Every post must carry **`#RAGInGoa`**. At least one Instagram account must
-be public; make them all public or judges can't open the links.
+Two things that bite people here:
 
----
-
-## 5. The form
-
-`https://forms.gle/MNvCjcv23Hn2Eeu58` — fill **every** field including the ones marked
-optional (member 2/3 names, handles, post links, and the live link; the task doc treats the
-live link as required even though the form does not). Confirmation field: type `#RAGInGoa`
-exactly.
-
-Also confirm the **separate participation form** was submitted — it is a different form
-from the submission one.
-
-**Submit once.** A second submission auto-flags for rejection.
+- **Check your recorder is capturing the mic**, not just system audio. Most screen recorders
+  don't by default. Record ten throwaway seconds and play it back before the real take.
+- `python -m demo.cli --demo-suite` walks every guardrail path in order — answered,
+  correctly refused, wrong language, gibberish, injection, harmful. Good for showing refusal
+  behaviour on camera without improvising queries live.
 
 ---
 
-## Talking points, if judges ask
+## 5. Posts — all three of you, both platforms
 
-Three findings worth knowing, all documented in `README.md` and `CHANGELOG.md`:
+Both videos → **Instagram and X** → posted by **Shanzal, Aditya and Kanishka individually**.
+Not one shared team post. Six posts total.
 
-1. **The off-topic guardrail was measured to be inverted and deleted.** Centroid similarity
-   scored real Hindi questions (−0.035, 0.252) *below* gibberish (0.184, 0.234). A centroid
-   measures genericness, not topicality.
+Every single one needs **`#RAGInGoa`**.
+
+At least one Instagram account has to be public — make them all public, or judges can't open
+the links you submit.
+
+---
+
+## 6. The form
+
+`https://forms.gle/MNvCjcv23Hn2Eeu58`
+
+Fill **every** field, including the optional ones — member 2 and 3 names, handles, post
+links, and the live link. The form marks the live link optional; the task doc treats it as
+required. Trust the doc.
+
+Confirmation field: type `#RAGInGoa` exactly.
+
+Also make sure the **separate participation form** got submitted — different form, easy to
+miss.
+
+**Submit once.** A second submission auto-flags for rejection, so have every row filled and
+verified before you click.
+
+---
+
+## Everything I need from you, in one list
+
+1. `SARVAM_API_KEY` — and please test the voice path with it before recording
+2. `ANTHROPIC_API_KEY` — then re-run the benchmark for a real end-to-end number
+3. GitHub account + a public repo to push to
+4. Render account, starter plan or above
+5. Both keys pasted into the Render dashboard
+6. *(Optional)* the two Disket Mono `.woff2` files
+7. Twitter/X and Instagram handles for all three of you
+8. The two videos recorded, with mic audio verified
+9. Six posts published, all tagged `#RAGInGoa`, accounts public
+10. Confirmation the participation form is already in
+
+Items 1 and 2 are the only ones that block me. Give me those and I can verify the voice path
+end to end and produce a real full-pipeline latency figure. The rest need your accounts.
+
+---
+
+## Things worth saying if a judge asks
+
+Three findings, all documented in `README.md` and `CHANGELOG.md` with the numbers:
+
+1. **A guardrail was built, measured, and deleted.** Off-topic detection by corpus-centroid
+   similarity scored real Hindi questions (−0.035, 0.252) *below* gibberish (0.184, 0.234).
+   A centroid points at the average passage, so similarity to it measures how generic a text
+   is, not how on-topic. No threshold fixes a signal pointing the wrong way.
 2. **The confidence gate barely worked on cosine alone.** Gibberish scored a *higher* median
-   cosine (0.774) than real questions (0.675). BM25 separates them completely — all
-   gibberish at 0.00, all 60 answerable queries at 8.5–43.3 — so the gate now requires
-   lexical support, blocking 7/42 unanswerable queries at zero false refusals.
-3. **BM25 was hand-rolled because `rank_bm25` was 27× too slow** (3.25ms → 0.12ms per query).
+   cosine (0.774) than real questions (0.675). BM25 separates them completely — every
+   gibberish query scores 0.00, all 60 answerable queries score 8.5–43.3 — so the gate now
+   demands lexical support. Blocks 7 of 42 unanswerable queries at zero false refusals.
+3. **BM25 is hand-written because `rank_bm25` was 27× too slow** — 3.25 ms → 0.12 ms per
+   query.
 
-And one honest limitation to state rather than hide: plausible Hindi questions the corpus
-simply doesn't answer sit *inside* the answerable range on both signals. No retrieval-score
-threshold separates them without refusing real questions, which is why the generator's
-`NO_ANSWER` refusal and the groundedness check exist downstream.
+And one limitation worth owning rather than hiding: plausible Hindi questions the corpus
+simply doesn't answer land *inside* the answerable range on both signals. No retrieval-score
+threshold separates those without also refusing real questions, which is exactly why the
+generator's `NO_ANSWER` refusal and the groundedness check exist downstream.

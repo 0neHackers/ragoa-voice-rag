@@ -201,4 +201,9 @@ class TestMeta:
     def test_root_serves_the_ui(self, client):
         response = client.get("/")
         assert response.status_code == 200
-        assert "Voice-Enabled RAG" in response.text
+        assert "Voice RAG" in response.text
+        # The Devanagari face is load-bearing, not styling: JetBrains Mono and Cal Sans
+        # have no Devanagari glyphs and every passage this app renders is Hindi.
+        assert "Noto+Sans+Devanagari" in response.text
+        # Same-origin by default; config.js only matters if the frontend is split off.
+        assert "__API_BASE__" in response.text

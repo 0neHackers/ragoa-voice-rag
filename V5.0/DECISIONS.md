@@ -1,7 +1,7 @@
 # DECISIONS.md — Team 0neHackers, HH Goa 2026 Task 2
 
 Design calls that gate the rest of the build. Once a decision is recorded here it is
-**not silently re-decided** — change this file deliberately, then re-run.
+**not silently re-decided** — edit this file when you mean to change something, then re-run.
 
 ---
 

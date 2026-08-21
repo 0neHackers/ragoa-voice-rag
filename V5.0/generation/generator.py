@@ -30,7 +30,7 @@ DEFAULT_MODEL = "claude-haiku-4-5-20251001"
 ANTHROPIC_URL = "https://api.anthropic.com/v1/messages"
 ANTHROPIC_VERSION = "2023-06-01"
 
-#: Kept tight on purpose. The prompt asks for two or three sentences because the answer is
+#: Kept tight. The prompt asks for two or three sentences because the answer is
 #: read aloud, and output tokens are the dominant term in generation latency.
 MAX_TOKENS = 300
 

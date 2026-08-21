@@ -4,7 +4,7 @@ The last line of defence: the model had good context and drifted anyway. This is
 only check positioned to catch that, because it is the only one that sees the generated
 text.
 
-**Default is a lexical-overlap check, deliberately.** The textbook answer is an
+**The default is a lexical-overlap check, and that's a choice.** The textbook answer is an
 NLI/entailment pass or a second "is this answer supported? yes/no" LLM call. That is more
 accurate and it is implemented here (`use_llm=True`), but it doubles the number of
 provider round-trips on a latency-graded pipeline, so it is opt-in rather than default.
