@@ -1,0 +1,678 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="dark light">
+<meta name="description" content="Voice-enabled RAG over ai4bharat/MSMARCO-XI. Speak Hindi, get a grounded answer — or a reasoned refusal.">
+<title>Voice RAG — 0neHackers</title>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,100..800;1,100..800&family=Noto+Sans+Devanagari:wght@100..900&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<link href="https://cdn.jsdelivr.net/npm/@fontsource/cal-sans@5.3.0/index.css" rel="stylesheet">
+
+<style>
+/* ═══════════════════════════════════════════════════════════════════════════
+   Disket Mono is not on any package CDN — it's a Fontfabric release that isn't
+   redistributed through npm or Google Fonts. Drop DisketMono-Regular.woff2 and
+   DisketMono-Bold.woff2 into demo/fonts/ and it picks them up automatically.
+   Until then Space Mono stands in: same squared-off terminal character, and it
+   keeps the type system honest instead of silently falling back to Arial.
+   ═══════════════════════════════════════════════════════════════════════════ */
+@font-face {
+  font-family: 'Disket Mono';
+  src: url('/fonts/DisketMono-Regular.woff2') format('woff2');
+  font-weight: 400; font-display: swap;
+}
+@font-face {
+  font-family: 'Disket Mono';
+  src: url('/fonts/DisketMono-Bold.woff2') format('woff2');
+  font-weight: 700; font-display: swap;
+}
+
+/* ─── tokens ─────────────────────────────────────────────────────────────── */
+:root {
+  /* Type stacks. Devanagari is explicit in every stack that can hold corpus
+     text — JetBrains Mono and Cal Sans have no Devanagari glyphs, and the whole
+     dataset is Hindi, so without Noto the actual content falls back to whatever
+     the OS happens to have. */
+  --f-display: 'Cal Sans', 'Noto Sans Devanagari', ui-sans-serif, system-ui, sans-serif;
+  --f-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  --f-body: 'JetBrains Mono', 'Noto Sans Devanagari', ui-monospace, Menlo, monospace;
+  --f-deva: 'Noto Sans Devanagari', 'JetBrains Mono', sans-serif;
+  --f-label: 'Disket Mono', 'Space Mono', 'JetBrains Mono', monospace;
+
+  /* Fluid scale: 320px floor → 3840px ceiling. The vw coefficient is derived
+     rather than eyeballed — each clamp interpolates across that exact range, so
+     nothing reflows into an awkward size on an ultrawide or a small phone. */
+  --step--1: clamp(0.69rem, 0.66rem + 0.14vw, 0.84rem);
+  --step-0:  clamp(0.81rem, 0.77rem + 0.20vw, 1.00rem);
+  --step-1:  clamp(0.94rem, 0.88rem + 0.30vw, 1.25rem);
+  --step-2:  clamp(1.13rem, 1.02rem + 0.52vw, 1.65rem);
+  --step-3:  clamp(1.38rem, 1.19rem + 0.90vw, 2.30rem);
+  --step-4:  clamp(1.75rem, 1.40rem + 1.65vw, 3.40rem);
+
+  --sp-1: clamp(0.25rem, 0.22rem + 0.14vw, 0.5rem);
+  --sp-2: clamp(0.5rem,  0.45rem + 0.25vw, 0.9rem);
+  --sp-3: clamp(0.75rem, 0.66rem + 0.44vw, 1.5rem);
+  --sp-4: clamp(1rem,    0.86rem + 0.68vw, 2.25rem);
+  --sp-5: clamp(1.5rem,  1.27rem + 1.13vw, 3.5rem);
+  --sp-6: clamp(2rem,    1.66rem + 1.70vw, 5rem);
+
+  --shell: clamp(20rem, 94vw, 108rem);
+
+  /* Boxy by construction: 2px, never more. Every edge in this UI is a corner. */
+  --edge: 2px;
+  --line: 1px;
+
+  --bg:        #0a0b0d;
+  --bg-sunk:   #07080a;
+  --panel:     #101216;
+  --panel-2:   #16191f;
+  --panel-3:   #1c2029;
+  --border:    #23272f;
+  --border-hi: #333945;
+  --text:      #e8eaef;
+  --text-dim:  #9198a6;
+  --text-mute: #626a78;
+  --accent:    #6ea8fe;
+  --accent-dim:#2a4a7f;
+  --ok:        #45d9a0;
+  --warn:      #ffb454;
+  --err:       #ff6b6b;
+
+  /* Bouncy but restrained. The overshoot easing is reserved for things the user
+     pressed; ambient motion uses the flat curve so the page never feels jittery. */
+  --bounce: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --smooth: cubic-bezier(0.22, 0.61, 0.36, 1);
+  --fast: 140ms;
+  --med: 260ms;
+}
+
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) {
+    --bg: #f4f5f7; --bg-sunk: #eceef1; --panel: #ffffff; --panel-2: #f7f8fa;
+    --panel-3: #eef0f3; --border: #d9dde3; --border-hi: #c2c8d2;
+    --text: #14161a; --text-dim: #4d5561; --text-mute: #79818f;
+    --accent: #2563eb; --accent-dim: #bfd3f8; --ok: #0f9d68; --warn: #b45309; --err: #dc2626;
+  }
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+
+html { -webkit-text-size-adjust: 100%; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--f-body);
+  font-size: var(--step-0);
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+  overflow-x: hidden;
+  /* Corpus text is arbitrary scraped web content — long URLs and unbroken Devanagari
+     compounds both show up. Let them break rather than widen the page. */
+  overflow-wrap: anywhere;
+  /* Faint grid — reads as engineering surface, not decoration. */
+  background-image:
+    linear-gradient(to right, color-mix(in srgb, var(--border) 34%, transparent) var(--line), transparent var(--line)),
+    linear-gradient(to bottom, color-mix(in srgb, var(--border) 34%, transparent) var(--line), transparent var(--line));
+  background-size: clamp(2rem, 4vw, 4rem) clamp(2rem, 4vw, 4rem);
+}
+
+.shell { width: var(--shell); margin-inline: auto; padding: var(--sp-5) var(--sp-3) var(--sp-6); }
+
+/* ─── type ───────────────────────────────────────────────────────────────── */
+.display { font-family: var(--f-display); font-weight: 400; letter-spacing: -0.02em; line-height: 1.05; }
+.label {
+  font-family: var(--f-label); font-size: var(--step--1); text-transform: uppercase;
+  letter-spacing: 0.16em; color: var(--text-mute);
+}
+.num { font-variant-numeric: tabular-nums; font-feature-settings: "tnum" 1; }
+:lang(hi), .deva { font-family: var(--f-deva); line-height: 1.75; }
+
+/* ─── header ─────────────────────────────────────────────────────────────── */
+.masthead { border-bottom: var(--line) solid var(--border); padding-bottom: var(--sp-4); margin-bottom: var(--sp-5); }
+.masthead h1 { font-family: var(--f-display); font-size: var(--step-4); margin: 0 0 var(--sp-2); letter-spacing: -0.03em; line-height: 1; }
+.masthead h1 .dot { color: var(--accent); }
+.tagline { color: var(--text-dim); font-size: var(--step-0); margin: 0; max-width: 68ch; }
+.tagline code { background: var(--panel-2); border: var(--line) solid var(--border); padding: 0.1em 0.4em; font-size: 0.9em; }
+
+.rail { display: flex; flex-wrap: wrap; gap: var(--sp-1); margin-top: var(--sp-3); }
+.chip {
+  font-family: var(--f-label); font-size: var(--step--1); letter-spacing: 0.1em; text-transform: uppercase;
+  color: var(--text-dim); background: var(--panel-2);
+  border: var(--line) solid var(--border); border-radius: var(--edge);
+  padding: var(--sp-1) var(--sp-2); white-space: nowrap;
+  /* The embedding-model chip reads "paraphrase-multilingual-MiniLM-L12-v2" — 343px
+     with nowrap, which pushed the whole page into horizontal scroll at 320px. Clip it
+     instead of letting one label dictate the minimum width of the site. */
+  max-width: 100%; overflow: hidden; text-overflow: ellipsis;
+  transition: border-color var(--fast) var(--smooth), color var(--fast) var(--smooth), transform var(--med) var(--bounce);
+}
+.chip:hover { border-color: var(--border-hi); color: var(--text); transform: translateY(-2px); }
+.chip[data-state="warn"] { color: var(--warn); border-color: color-mix(in srgb, var(--warn) 35%, var(--border)); }
+.chip[data-state="err"]  { color: var(--err);  border-color: color-mix(in srgb, var(--err) 35%, var(--border)); }
+
+/* ─── panels ─────────────────────────────────────────────────────────────── */
+.panel {
+  background: var(--panel); border: var(--line) solid var(--border); border-radius: var(--edge);
+  margin-bottom: var(--sp-3);
+}
+.panel__head {
+  display: flex; align-items: center; justify-content: space-between; gap: var(--sp-2);
+  padding: var(--sp-2) var(--sp-3); border-bottom: var(--line) solid var(--border);
+  background: var(--panel-2); flex-wrap: wrap;
+}
+.panel__body { padding: var(--sp-3); }
+
+/* ─── controls ───────────────────────────────────────────────────────────── */
+.controls { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
+
+.btn {
+  font-family: var(--f-label); font-size: var(--step--1); letter-spacing: 0.12em; text-transform: uppercase;
+  background: var(--panel-3); color: var(--text);
+  border: var(--line) solid var(--border-hi); border-radius: var(--edge);
+  padding: var(--sp-2) var(--sp-3); cursor: pointer;
+  display: inline-flex; align-items: center; gap: var(--sp-2);
+  transition: transform var(--med) var(--bounce), background var(--fast) var(--smooth),
+              border-color var(--fast) var(--smooth), box-shadow var(--fast) var(--smooth);
+  min-height: 2.75rem; /* stays tappable at 320px */
+}
+.btn:hover:not(:disabled) { transform: translateY(-2px); border-color: var(--accent); background: var(--panel-2); }
+.btn:active:not(:disabled) { transform: translateY(0) scale(0.97); transition-duration: 60ms; }
+.btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.btn:disabled { opacity: 0.45; cursor: not-allowed; }
+
+.btn--primary { background: var(--accent); color: #06080d; border-color: var(--accent); font-weight: 700; }
+.btn--primary:hover:not(:disabled) { background: color-mix(in srgb, var(--accent) 86%, #fff); }
+.btn--rec { background: var(--err); border-color: var(--err); color: #fff; }
+.btn--rec:hover:not(:disabled) { background: var(--err); }
+
+.pulse { width: 0.55em; height: 0.55em; background: currentColor; border-radius: 50%; animation: pulse 1.15s var(--smooth) infinite; }
+@keyframes pulse { 0%,100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.35; transform: scale(0.72); } }
+
+.field { display: flex; gap: var(--sp-2); margin-top: var(--sp-3); flex-wrap: wrap; }
+.field input {
+  flex: 1 1 16rem; min-width: 0;
+  background: var(--bg-sunk); color: var(--text);
+  border: var(--line) solid var(--border); border-radius: var(--edge);
+  padding: var(--sp-2) var(--sp-3); font-family: var(--f-deva); font-size: var(--step-0);
+  transition: border-color var(--fast) var(--smooth), box-shadow var(--fast) var(--smooth);
+  min-height: 2.75rem;
+}
+.field input:focus {
+  outline: none; border-color: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent);
+}
+.field input::placeholder { color: var(--text-mute); font-family: var(--f-mono); }
+
+.status { margin-top: var(--sp-3); font-size: var(--step--1); color: var(--text-dim); min-height: 1.4em; }
+.status[data-tone="warn"] { color: var(--warn); }
+.status[data-tone="err"]  { color: var(--err); }
+.note { margin: var(--sp-3) 0 0; font-size: var(--step--1); color: var(--text-mute); max-width: 78ch; }
+.note code { color: var(--text-dim); }
+
+/* ─── verdict ────────────────────────────────────────────────────────────── */
+.pill {
+  font-family: var(--f-label); font-size: var(--step--1); letter-spacing: 0.14em; text-transform: uppercase;
+  padding: var(--sp-1) var(--sp-2); border-radius: var(--edge); border: var(--line) solid;
+}
+.pill[data-s="answered"] { color: var(--ok);   border-color: color-mix(in srgb, var(--ok) 40%, transparent);   background: color-mix(in srgb, var(--ok) 10%, transparent); }
+.pill[data-s="declined"] { color: var(--warn); border-color: color-mix(in srgb, var(--warn) 40%, transparent); background: color-mix(in srgb, var(--warn) 10%, transparent); }
+.pill[data-s="error"]    { color: var(--err);  border-color: color-mix(in srgb, var(--err) 40%, transparent);  background: color-mix(in srgb, var(--err) 10%, transparent); }
+
+.answer { font-size: var(--step-1); line-height: 1.7; margin: var(--sp-2) 0 0; font-family: var(--f-deva); }
+.answer[data-tone="warn"] { color: var(--warn); font-family: var(--f-body); font-size: var(--step-0); }
+.answer[data-tone="err"]  { color: var(--err);  font-family: var(--f-body); font-size: var(--step-0); }
+
+.block + .block { margin-top: var(--sp-4); padding-top: var(--sp-4); border-top: var(--line) solid var(--border); }
+
+/* Metrics: auto-fit means one column at 320px and a full row on a 4K panel,
+   with no breakpoint doing the deciding. */
+.metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 9rem), 1fr)); gap: var(--line); background: var(--border); border: var(--line) solid var(--border); margin-top: var(--sp-4); }
+.metric { background: var(--panel); padding: var(--sp-3); transition: background var(--fast) var(--smooth); }
+.metric:hover { background: var(--panel-2); }
+.metric__v { font-family: var(--f-label); font-size: var(--step-2); font-weight: 700; line-height: 1.1; margin-top: var(--sp-1); }
+.metric__v[data-over="1"] { color: var(--warn); }
+.metric__v .u { font-size: 0.5em; color: var(--text-mute); margin-left: 0.15em; }
+
+/* ─── tables ─────────────────────────────────────────────────────────────── */
+.scroller { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+table { width: 100%; border-collapse: collapse; font-size: var(--step--1); min-width: 34rem; }
+th, td { text-align: left; padding: var(--sp-2); border-bottom: var(--line) solid var(--border); vertical-align: top; }
+th { font-family: var(--f-label); letter-spacing: 0.12em; text-transform: uppercase; color: var(--text-mute); font-weight: 400; white-space: nowrap; }
+tbody tr { transition: background var(--fast) var(--smooth); }
+tbody tr:hover { background: var(--panel-2); }
+td.num { white-space: nowrap; }
+.v-pass  { color: var(--ok); }
+.v-block { color: var(--warn); font-weight: 700; }
+
+/* ─── passages ───────────────────────────────────────────────────────────── */
+.passage {
+  border-left: var(--edge) solid var(--border-hi); background: var(--panel-2);
+  padding: var(--sp-2) var(--sp-3); margin-bottom: var(--sp-2);
+  transition: border-color var(--med) var(--smooth), transform var(--med) var(--bounce);
+}
+.passage:hover { border-left-color: var(--accent); transform: translateX(3px); }
+.passage__meta { font-family: var(--f-label); font-size: var(--step--1); color: var(--text-mute); margin-bottom: var(--sp-1); display: flex; flex-wrap: wrap; gap: var(--sp-2); }
+.passage__text { font-family: var(--f-deva); font-size: var(--step-0); }
+
+details summary { cursor: pointer; font-family: var(--f-label); font-size: var(--step--1); text-transform: uppercase; letter-spacing: 0.12em; color: var(--text-mute); padding: var(--sp-2) 0; transition: color var(--fast) var(--smooth); }
+details summary:hover { color: var(--text); }
+pre { overflow-x: auto; font-size: var(--step--1); color: var(--text-dim); background: var(--bg-sunk); border: var(--line) solid var(--border); padding: var(--sp-2); margin: 0; }
+
+/* ─── motion ─────────────────────────────────────────────────────────────── */
+.reveal { animation: reveal 380ms var(--bounce) both; }
+@keyframes reveal { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+.stagger > * { animation: reveal 340ms var(--bounce) both; }
+.stagger > *:nth-child(1) { animation-delay: 20ms; }
+.stagger > *:nth-child(2) { animation-delay: 55ms; }
+.stagger > *:nth-child(3) { animation-delay: 90ms; }
+.stagger > *:nth-child(4) { animation-delay: 125ms; }
+.stagger > *:nth-child(5) { animation-delay: 160ms; }
+.hidden { display: none !important; }
+
+footer { margin-top: var(--sp-5); padding-top: var(--sp-4); border-top: var(--line) solid var(--border); color: var(--text-mute); font-size: var(--step--1); display: flex; justify-content: space-between; gap: var(--sp-3); flex-wrap: wrap; }
+
+/* Motion is decoration here; the interface works identically without it. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; }
+  .btn:hover, .chip:hover, .passage:hover { transform: none; }
+}
+
+@media (max-width: 26rem) {
+  .controls .btn { flex: 1 1 100%; justify-content: center; }
+  .field input, .field .btn { flex: 1 1 100%; }
+}
+</style>
+</head>
+
+<body>
+<div class="shell">
+
+  <header class="masthead">
+    <h1 class="display">Voice&nbsp;RAG<span class="dot">.</span></h1>
+    <p class="tagline">
+      Ask a question out loud in Hindi. It gets transcribed, matched against
+      <code>ai4bharat/MSMARCO-XI</code>, and answered from what was actually retrieved —
+      or refused, with the reason shown.
+    </p>
+    <div class="rail" id="rail"></div>
+  </header>
+
+  <section class="panel reveal">
+    <div class="panel__head"><span class="label">Ask</span><span class="label" id="modeHint"></span></div>
+    <div class="panel__body">
+      <div class="controls">
+        <button class="btn btn--primary" id="recBtn">Record</button>
+        <button class="btn btn--rec hidden" id="stopBtn"><span class="pulse"></span>Stop</button>
+        <button class="btn" id="fileBtn">Upload audio</button>
+        <button class="btn" id="sampleBtn">Try an example</button>
+        <input type="file" id="fileInput" accept="audio/*" class="hidden">
+      </div>
+      <div class="field">
+        <input type="text" id="q" lang="hi" placeholder="…or type a question (flagged as text, not voice)" autocomplete="off">
+        <button class="btn" id="askBtn">Ask</button>
+      </div>
+      <div class="status" id="status"></div>
+      <p class="note">
+        The voice path runs real Sarvam streaming speech-to-text on captured audio. Typed
+        questions work too, but come back flagged <code>voice_input: false</code> — a typed
+        question never gets presented as a spoken one.
+      </p>
+    </div>
+  </section>
+
+  <section class="panel hidden" id="resultPanel">
+    <div class="panel__head">
+      <span class="label">Result</span>
+      <span class="pill" id="pill"></span>
+    </div>
+    <div class="panel__body">
+      <div class="block hidden" id="transcriptBlock">
+        <span class="label">Heard</span>
+        <p class="answer deva" id="transcript"></p>
+        <div class="rail" id="sttRail"></div>
+      </div>
+      <div class="block">
+        <span class="label" id="answerLabel">Answer</span>
+        <p class="answer" id="answer"></p>
+      </div>
+      <div class="metrics stagger" id="metrics"></div>
+    </div>
+  </section>
+
+  <section class="panel hidden" id="guardPanel">
+    <div class="panel__head"><span class="label">Guardrails</span><span class="label" id="guardCount"></span></div>
+    <div class="panel__body">
+      <div class="scroller">
+        <table>
+          <thead><tr><th>Check</th><th>Verdict</th><th>Score</th><th>Threshold</th><th>Why</th><th>ms</th></tr></thead>
+          <tbody id="guardRows"></tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <section class="panel hidden" id="passagePanel">
+    <div class="panel__head"><span class="label">Retrieved</span><span class="label" id="passageCount"></span></div>
+    <div class="panel__body" id="passages"></div>
+  </section>
+
+  <section class="panel hidden" id="tracePanel">
+    <div class="panel__head"><span class="label">Stage timings</span></div>
+    <div class="panel__body">
+      <div class="scroller">
+        <table>
+          <thead><tr><th>Stage</th><th>ms</th><th>Share</th></tr></thead>
+          <tbody id="traceRows"></tbody>
+        </table>
+      </div>
+      <details><summary>Raw response</summary><pre id="raw"></pre></details>
+    </div>
+  </section>
+
+  <footer>
+    <span>Team <strong>0neHackers</strong> — HH Goa 2026, Task 2</span>
+    <span class="label" id="ver"></span>
+  </footer>
+
+</div>
+
+<script src="config.js" onerror="void 0"></script>
+<script>
+'use strict';
+const $ = id => document.getElementById(id);
+
+/* Where the pipeline lives.
+   Empty means same-origin, which is what happens when FastAPI serves this page
+   itself. If the page is hosted separately — Vercel static, say, with the backend
+   on Render — set window.__API_BASE__ to the backend origin before this script
+   runs (config.js does exactly that) and every call retargets. The backend already
+   sends permissive CORS, so no proxy is needed. */
+const API = (window.__API_BASE__ || '').replace(/\/$/, '');
+const api = path => `${API}${path}`;
+const EXAMPLES = [
+  'ईमानदारी या सच्चाई की परिभाषा',
+  'फ्रैंक गिफोर्ड ने कितनी महिलाओं से शादी की',
+  'पोटेशियम में कम खाद्य पदार्थों का चार्ट।',
+  'भारत की राजधानी क्या है?',
+];
+let exampleIdx = 0;
+
+function setStatus(msg, tone) {
+  const el = $('status');
+  el.textContent = msg || '';
+  if (tone) el.dataset.tone = tone; else delete el.dataset.tone;
+}
+
+/* ── health ─────────────────────────────────────────────────────────────── */
+fetch(api('/health')).then(r => r.json()).then(h => {
+  if (!h.ok) {
+    $('rail').innerHTML = `<span class="chip" data-state="err">offline — ${h.error || 'unknown'}</span>`;
+    return;
+  }
+  const chips = [
+    [`${h.index_size.toLocaleString()} chunks`, null],
+    [`${h.index_backend}`, null],
+    [h.embed_model.split('/').pop(), null],
+    [h.stt_configured ? 'stt ready' : 'stt key missing', h.stt_configured ? null : 'warn'],
+    [h.generation_enabled ? 'generation on' : 'retrieval only', null],
+    [h.guardrails_enabled ? 'guardrails on' : 'guardrails off', h.guardrails_enabled ? null : 'warn'],
+    [`budget ${h.retrieval_budget_ms}ms`, null],
+  ];
+  $('rail').innerHTML = chips.map(([t, s]) =>
+    `<span class="chip"${s ? ` data-state="${s}"` : ''}>${t}</span>`).join('');
+  if (!h.stt_configured) {
+    setStatus('SARVAM_API_KEY is not set — the voice path returns a typed config error rather than a fake transcript.', 'warn');
+  }
+}).catch(() => setStatus('Could not reach /health.', 'err'));
+
+/* ── render ─────────────────────────────────────────────────────────────── */
+function render(d) {
+  const p = $('resultPanel');
+  p.classList.remove('hidden');
+  p.classList.remove('reveal'); void p.offsetWidth; p.classList.add('reveal');
+
+  $('pill').textContent = d.status;
+  $('pill').dataset.s = d.status;
+
+  // transcript
+  if (d.transcript) {
+    $('transcriptBlock').classList.remove('hidden');
+    $('transcript').textContent = d.transcript.text;
+    const t = d.transcript;
+    $('sttRail').innerHTML = [
+      `${t.provider}/${t.model}`, t.transport, `${t.audio_duration_s}s audio`,
+      t.is_real_audio ? 'real audio' : 'NOT audio',
+    ].map(x => `<span class="chip">${x}</span>`).join('');
+  } else {
+    $('transcriptBlock').classList.add('hidden');
+  }
+
+  // answer
+  const a = $('answer');
+  delete a.dataset.tone;
+  if (d.status === 'answered' && d.answer) {
+    $('answerLabel').textContent = d.answer_mode === 'extractive'
+      ? 'Answer — extractive, no LLM key set, this is a retrieved passage verbatim'
+      : 'Answer — generated';
+    a.textContent = d.answer;
+  } else if (d.status === 'declined') {
+    const g = (d.guardrails || []).find(x => !x.passed);
+    $('answerLabel').textContent = `Declined — ${d.reason || 'no reason given'}`;
+    a.textContent = g ? g.reason : 'The system chose not to answer.';
+    a.dataset.tone = 'warn';
+  } else {
+    $('answerLabel').textContent = 'Error';
+    a.textContent = d.reason || 'Something failed.';
+    a.dataset.tone = 'err';
+  }
+
+  // metrics
+  const L = d.latency || {}, budget = 200;
+  const cells = [['Retrieval', L.retrieval_ms, L.retrieval_ms > budget]];
+  if (L.stt_ms) cells.push(['Speech-to-text', L.stt_ms, false]);
+  if (L.generation_ms) cells.push(['Generation', L.generation_ms, false]);
+  cells.push(['Full pipeline', L.full_ms, false]);
+  cells.push(['Voice input', d.voice_input ? 'yes' : 'no', false]);
+
+  $('metrics').innerHTML = cells.map(([k, v, over]) => `
+    <div class="metric">
+      <div class="label">${k}</div>
+      <div class="metric__v num" ${over ? 'data-over="1"' : ''}>${
+        typeof v === 'number' ? `${v.toFixed(1)}<span class="u">ms</span>` : v
+      }</div>
+    </div>`).join('');
+
+  // guardrails
+  const gs = d.guardrails || [];
+  $('guardPanel').classList.toggle('hidden', !gs.length);
+  $('guardCount').textContent = `${gs.filter(g => g.passed).length}/${gs.length} passed`;
+  $('guardRows').innerHTML = gs.map(g => `
+    <tr>
+      <td>${g.name}</td>
+      <td class="${g.passed ? 'v-pass' : 'v-block'}">${g.passed ? 'pass' : 'BLOCK'}</td>
+      <td class="num">${g.score != null ? Number(g.score).toFixed(3) : '—'}</td>
+      <td class="num">${g.threshold != null ? Number(g.threshold).toFixed(3) : '—'}</td>
+      <td>${g.reason || ''}</td>
+      <td class="num">${(g.elapsed_ms || 0).toFixed(2)}</td>
+    </tr>`).join('');
+
+  // passages
+  const ps = d.retrieved || [];
+  $('passagePanel').classList.toggle('hidden', !ps.length);
+  $('passageCount').textContent = `${ps.length} chunks`;
+  $('passages').innerHTML = ps.map((x, i) => `
+    <div class="passage">
+      <div class="passage__meta">
+        <span>[${i + 1}]</span><span>${x.strategy}</span>
+        <span>cos ${x.dense_score != null ? x.dense_score.toFixed(3) : '—'}</span>
+        <span>bm25 ${x.lexical_score != null ? x.lexical_score.toFixed(2) : '—'}</span>
+      </div>
+      <div class="passage__text">${x.text}</div>
+    </div>`).join('');
+
+  // timings
+  const st = Object.entries(L.stages || {}).sort((a, b) => b[1] - a[1]);
+  const total = st.reduce((s, [, v]) => s + v, 0) || 1;
+  $('tracePanel').classList.toggle('hidden', !st.length);
+  $('traceRows').innerHTML = st.map(([k, v]) =>
+    `<tr><td>${k}</td><td class="num">${v.toFixed(2)}</td><td class="num">${(v / total * 100).toFixed(1)}%</td></tr>`).join('');
+  $('raw').textContent = JSON.stringify(d, null, 2);
+}
+
+async function send(url, body, isForm) {
+  const t0 = performance.now();
+  setStatus('Running…');
+  try {
+    const res = await fetch(url, isForm
+      ? { method: 'POST', body }
+      : { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    const d = await res.json();
+    if (!res.ok) { setStatus(d.detail || `HTTP ${res.status}`, 'err'); return; }
+    render(d);
+    setStatus(`Round trip ${(performance.now() - t0).toFixed(0)}ms — includes network and browser, so it reads higher than the server-side number above.`);
+  } catch (e) {
+    setStatus('Request failed: ' + e.message, 'err');
+  }
+}
+
+/* ── text ───────────────────────────────────────────────────────────────── */
+$('askBtn').onclick = () => {
+  const q = $('q').value.trim();
+  if (!q) { setStatus('Type something first.', 'warn'); return; }
+  send(api('/ask/text'), { query: q }, false);
+};
+$('q').addEventListener('keydown', e => { if (e.key === 'Enter') $('askBtn').click(); });
+$('sampleBtn').onclick = () => {
+  $('q').value = EXAMPLES[exampleIdx % EXAMPLES.length];
+  exampleIdx++;
+  $('askBtn').click();
+};
+
+/* ── upload ─────────────────────────────────────────────────────────────── */
+$('fileBtn').onclick = () => $('fileInput').click();
+$('fileInput').onchange = e => {
+  const f = e.target.files[0];
+  if (!f) return;
+  const fd = new FormData(); fd.append('audio', f, f.name);
+  setStatus(`Uploading ${f.name} (${(f.size / 1024).toFixed(0)}KB)…`);
+  send(api('/ask/voice'), fd, true);
+};
+
+/* ── mic ────────────────────────────────────────────────────────────────────
+   Records raw PCM through the Web Audio API and encodes the WAV here in the
+   browser, instead of using MediaRecorder.
+
+   MediaRecorder is the obvious pick and the wrong one: Chrome hands you
+   WebM/Opus, and libsndfile — what the server decodes with — has no WebM
+   demuxer. The choice was either installing ffmpeg on whatever host we deploy
+   to and transcoding inside the request, or just encoding the format the
+   recogniser wants at the point where the samples already exist. This is the
+   second one. Bonus: the upload is already 16kHz mono, so the server resamples
+   nothing.
+   ──────────────────────────────────────────────────────────────────────────── */
+const RATE = 16000;
+let ctx = null, stream = null, proc = null, src = null, buffers = [], srcRate = 48000, live = false;
+
+function encodeWav(samples, rate) {
+  const buf = new ArrayBuffer(44 + samples.length * 2);
+  const v = new DataView(buf);
+  const str = (o, s) => { for (let i = 0; i < s.length; i++) v.setUint8(o + i, s.charCodeAt(i)); };
+  str(0, 'RIFF'); v.setUint32(4, 36 + samples.length * 2, true);
+  str(8, 'WAVEfmt '); v.setUint32(16, 16, true);
+  v.setUint16(20, 1, true); v.setUint16(22, 1, true);
+  v.setUint32(24, rate, true); v.setUint32(28, rate * 2, true);
+  v.setUint16(32, 2, true); v.setUint16(34, 16, true);
+  str(36, 'data'); v.setUint32(40, samples.length * 2, true);
+  let o = 44;
+  for (let i = 0; i < samples.length; i++, o += 2) {
+    const s = Math.max(-1, Math.min(1, samples[i]));
+    v.setInt16(o, s < 0 ? s * 0x8000 : s * 0x7FFF, true);
+  }
+  return new Blob([v], { type: 'audio/wav' });
+}
+
+function downsample(input, from, to) {
+  if (from === to) return input;
+  const ratio = from / to;
+  const out = new Float32Array(Math.round(input.length / ratio));
+  for (let i = 0; i < out.length; i++) {
+    // Average across the source window rather than point-sampling. Decimating
+    // 48k→16k by taking every third sample folds high frequencies straight back
+    // into the speech band.
+    const a = Math.floor(i * ratio), b = Math.min(Math.floor((i + 1) * ratio), input.length);
+    let sum = 0, n = 0;
+    for (let j = a; j < b; j++) { sum += input[j]; n++; }
+    out[i] = n ? sum / n : 0;
+  }
+  return out;
+}
+
+$('recBtn').onclick = async () => {
+  if (live) return;
+  if (!navigator.mediaDevices?.getUserMedia) {
+    setStatus('No microphone API in this browser — use Upload audio instead.', 'err');
+    return;
+  }
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({
+      audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true }
+    });
+    ctx = new (window.AudioContext || window.webkitAudioContext)();
+    srcRate = ctx.sampleRate;
+    src = ctx.createMediaStreamSource(stream);
+    // ScriptProcessorNode is deprecated in favour of AudioWorklet, but a worklet
+    // needs its own separately-served module file and this page has to work when
+    // it's opened straight off a fresh deploy. Support here is universal.
+    proc = ctx.createScriptProcessor(4096, 1, 1);
+    buffers = [];
+    proc.onaudioprocess = e => buffers.push(new Float32Array(e.inputBuffer.getChannelData(0)));
+    src.connect(proc); proc.connect(ctx.destination);
+
+    live = true;
+    $('recBtn').classList.add('hidden');
+    $('stopBtn').classList.remove('hidden');
+    setStatus(`Recording at ${srcRate}Hz — ask your question, then hit stop.`);
+  } catch (e) {
+    setStatus('Microphone unavailable: ' + e.message, 'err');
+  }
+};
+
+$('stopBtn').onclick = async () => {
+  if (!live) return;
+  live = false;
+  $('stopBtn').classList.add('hidden');
+  $('recBtn').classList.remove('hidden');
+
+  try { proc.disconnect(); src.disconnect(); } catch (_) {}
+  stream.getTracks().forEach(t => t.stop());
+  await ctx.close();
+
+  const total = buffers.reduce((n, b) => n + b.length, 0);
+  const all = new Float32Array(total);
+  let o = 0;
+  for (const b of buffers) { all.set(b, o); o += b.length; }
+
+  // Catch a dead mic here rather than spending an STT call to find out. A
+  // recorder that captured nothing is the most common way a "voice-enabled"
+  // demo turns out to be silent.
+  let peak = 0;
+  for (let i = 0; i < all.length; i++) peak = Math.max(peak, Math.abs(all[i]));
+  const secs = all.length / srcRate;
+  if (secs < 0.4) { setStatus(`Only ${secs.toFixed(1)}s captured — hold it a bit longer.`, 'warn'); return; }
+  if (peak < 0.005) { setStatus(`${secs.toFixed(1)}s of near-silence (peak ${peak.toFixed(4)}) — check the mic input and OS permissions.`, 'warn'); return; }
+
+  const blob = encodeWav(downsample(all, srcRate, RATE), RATE);
+  const fd = new FormData(); fd.append('audio', blob, 'question.wav');
+  setStatus(`${secs.toFixed(1)}s captured (${(blob.size / 1024).toFixed(0)}KB, peak ${peak.toFixed(2)}) — transcribing…`);
+  send(api('/ask/voice'), fd, true);
+};
+</script>
+</body>
+</html>

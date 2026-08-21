@@ -1,0 +1,27 @@
+# Core pipeline
+numpy>=1.26
+pydantic>=2.7
+python-dotenv>=1.0
+requests>=2.31
+
+# Dataset
+datasets>=2.19
+
+# Embeddings (ONNX/CPU — no torch)
+fastembed>=0.3
+
+# Vector index (falls back to exact NumPy index if no wheel is available)
+faiss-cpu>=1.8
+
+# Lexical half of hybrid retrieval
+rank-bm25>=0.2.2
+
+# STT streaming client
+websockets>=12.0
+soundfile>=0.12
+
+# Demo app / live link
+fastapi>=0.110
+uvicorn[standard]>=0.29
+python-multipart>=0.0.9
+httpx>=0.27          # FastAPI TestClient dependency

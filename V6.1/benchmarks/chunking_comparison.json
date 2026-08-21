@@ -1,0 +1,115 @@
+{
+  "date": "2026-08-21",
+  "lang": "hi",
+  "examples_indexed": 250,
+  "queries_evaluated": 60,
+  "top_k": 5,
+  "results": [
+    {
+      "strategy": "fixed_size",
+      "components": [
+        "fixed_size"
+      ],
+      "n_chunks": 2557,
+      "n_chunks_before_dedupe": 2563,
+      "mean_chunk_chars": 318.4,
+      "median_chunk_chars": 295,
+      "max_chunk_chars": 642,
+      "recall_at_5": 0.95,
+      "mrr": 0.7519,
+      "mean_top_score": 0.6597,
+      "chunk_seconds": 0.11,
+      "embed_seconds": 117.0,
+      "retrieval_p50_ms": 95.14
+    },
+    {
+      "strategy": "semantic",
+      "components": [
+        "semantic"
+      ],
+      "n_chunks": 3771,
+      "n_chunks_before_dedupe": 3874,
+      "mean_chunk_chars": 210.4,
+      "median_chunk_chars": 208,
+      "max_chunk_chars": 7515,
+      "recall_at_5": 0.9667,
+      "mrr": 0.7703,
+      "mean_top_score": 0.6739,
+      "chunk_seconds": 191.37,
+      "embed_seconds": 181.9,
+      "retrieval_p50_ms": 99.61
+    },
+    {
+      "strategy": "recursive",
+      "components": [
+        "recursive"
+      ],
+      "n_chunks": 2505,
+      "n_chunks_before_dedupe": 2532,
+      "mean_chunk_chars": 317.5,
+      "median_chunk_chars": 295,
+      "max_chunk_chars": 775,
+      "recall_at_5": 0.95,
+      "mrr": 0.7575,
+      "mean_top_score": 0.6599,
+      "chunk_seconds": 0.12,
+      "embed_seconds": 116.6,
+      "retrieval_p50_ms": 100.65
+    },
+    {
+      "strategy": "metadata_aware",
+      "components": [
+        "metadata_aware"
+      ],
+      "n_chunks": 2505,
+      "n_chunks_before_dedupe": 2511,
+      "mean_chunk_chars": 321.9,
+      "median_chunk_chars": 295,
+      "max_chunk_chars": 1016,
+      "recall_at_5": 0.95,
+      "mrr": 0.7594,
+      "mean_top_score": 0.6604,
+      "chunk_seconds": 0.12,
+      "embed_seconds": 123.2,
+      "retrieval_p50_ms": 98.94
+    },
+    {
+      "strategy": "ensemble (shipped)",
+      "components": [
+        "metadata_aware",
+        "recursive"
+      ],
+      "n_chunks": 2530,
+      "n_chunks_before_dedupe": 5043,
+      "mean_chunk_chars": 323.3,
+      "median_chunk_chars": 296.0,
+      "max_chunk_chars": 1016,
+      "recall_at_5": 0.95,
+      "mrr": 0.7519,
+      "mean_top_score": 0.6596,
+      "chunk_seconds": 0.25,
+      "embed_seconds": 124.4,
+      "retrieval_p50_ms": 95.9
+    },
+    {
+      "strategy": "ensemble (all four)",
+      "components": [
+        "fixed_size",
+        "semantic",
+        "recursive",
+        "metadata_aware"
+      ],
+      "n_chunks": 5110,
+      "n_chunks_before_dedupe": 11480,
+      "mean_chunk_chars": 255.7,
+      "median_chunk_chars": 246.0,
+      "max_chunk_chars": 7515,
+      "recall_at_5": 0.9167,
+      "mrr": 0.7433,
+      "mean_top_score": 0.6737,
+      "chunk_seconds": 188.57,
+      "embed_seconds": 218.9,
+      "retrieval_p50_ms": 96.0
+    }
+  ]
+}

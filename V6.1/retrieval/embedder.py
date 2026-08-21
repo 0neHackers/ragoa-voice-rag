@@ -1,0 +1,142 @@
+"""Embedding wrapper around fastembed's ONNX runtime.
+
+One process-wide instance per model. The model is a ~220MB ONNX session and the cost of
+constructing it is ~2.5s — paying that on a query path would blow the entire latency
+budget on its own, so instances are cached by model name and the first construction is
+expected to happen at index build time, not at request time.
+
+Everything downstream assumes L2-normalised vectors: it makes FAISS inner-product search
+identical to cosine similarity, which in turn lets the confidence guardrail state its
+threshold in cosine terms that mean the same thing across corpora.
+"""
+
+from __future__ import annotations
+
+import os
+import threading
+from pathlib import Path
+
+import numpy as np
+
+DEFAULT_MODEL = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
+
+_CACHE: dict[str, "Embedder"] = {}
+_LOCK = threading.Lock()
+
+
+class Embedder:
+    #: ONNX intra-op threads per session. Pinned to 1, and measured rather than assumed:
+    #: on a 16-core box, embedding one query with unbounded threads takes 112ms median /
+    #: 121ms max, and with `threads=1` takes 104ms / 107ms. A single 12-layer forward
+    #: pass over a ~15-token query is too small to parallelise, so the extra threads buy
+    #: nothing and cost synchronisation — visible mostly in the tail, which is exactly
+    #: what a P100 measures.
+    #:
+    #: It also fixes the build. `parallel=N` re-instantiates this class in each worker,
+    #: so unbounded threads meant 8 workers x 16 intra-op threads with 8 separate memory
+    #: arenas, and the ONNX session load died with "bad allocation".
+    DEFAULT_THREADS = 1
+
+    def __init__(self, model_name: str | None = None, threads: int | None = None) -> None:
+        if threads is None:
+            threads = int(os.getenv("EMBED_THREADS", str(self.DEFAULT_THREADS)))
+        self.model_name = model_name or os.getenv("EMBED_MODEL", DEFAULT_MODEL)
+        repo_root = Path(__file__).resolve().parent.parent.parent
+        os.environ.setdefault("HF_HOME", str(repo_root / "hf_cache"))
+
+        # fastembed defaults its ONNX cache to the OS temp directory, which Windows and
+        # most PaaS containers are free to clear. Pinning it under the repo means a
+        # deployed instance cannot lose its model between restarts and re-download
+        # 220MB on a user's first query.
+        cache_dir = os.getenv("FASTEMBED_CACHE_DIR") or str(repo_root / "model_cache")
+        Path(cache_dir).mkdir(parents=True, exist_ok=True)
+
+        from fastembed import TextEmbedding
+
+        self._model = TextEmbedding(self.model_name, cache_dir=cache_dir, threads=threads)
+        self._dim: int | None = None
+        self._warm = False
+        # Each worker process loads its own ~250MB ONNX session, so this is bounded by
+        # memory, not by core count: an unbounded `cpu_count - 2` spawned 14 workers and
+        # the model load died with a bad allocation. 8 is also where the measured
+        # speedup flattens, so the cap costs nothing.
+        self.build_parallelism = int(
+            os.getenv("EMBED_BUILD_PARALLELISM", str(min(8, max(1, (os.cpu_count() or 4) - 2))))
+        )
+
+    @property
+    def dim(self) -> int:
+        if self._dim is None:
+            self._dim = int(self.embed_texts(["dimension probe"]).shape[1])
+        return self._dim
+
+    #: Corpus size above which build-time embedding switches to multiple processes.
+    #: Below it, process spawn costs more than it saves.
+    PARALLEL_THRESHOLD = 2000
+
+    def embed_texts(
+        self, texts: list[str], batch_size: int = 64, parallel: int | None = None
+    ) -> np.ndarray:
+        """Embed a list of documents. Returns float32 `(n, dim)`, L2-normalised.
+
+        `parallel` fans the work across worker processes. Measured on 600 real chunks
+        (avg 319 chars): 294 ms/chunk single-process, 113 at parallel=4, 82 at
+        parallel=8 — a 3.6x speedup that takes a 15k-chunk index build from ~74 minutes
+        to ~20. It is applied automatically only above `PARALLEL_THRESHOLD`, because
+        for a handful of texts the process spawn is pure overhead, and it must never be
+        used on the query path where a single string is embedded.
+        """
+        if not texts:
+            return np.zeros((0, self.dim if self._dim else 384), dtype="float32")
+
+        if parallel is None and len(texts) >= self.PARALLEL_THRESHOLD:
+            parallel = self.build_parallelism
+
+        vecs = np.asarray(
+            list(self._model.embed(texts, batch_size=batch_size, parallel=parallel)),
+            dtype="float32",
+        )
+        return _l2_normalise(vecs)
+
+    def warmup(self) -> float:
+        """Run one throwaway inference so the first real query is not an outlier.
+
+        The first ONNX `run()` pays graph initialisation and weight paging — on this
+        model that is several hundred milliseconds. Benchmarks and the demo both call
+        this at startup so the reported P100 measures steady-state retrieval rather
+        than a one-off cold start.
+        """
+        import time
+
+        t0 = time.perf_counter()
+        self.embed_texts(["warmup"])
+        self._warm = True
+        return (time.perf_counter() - t0) * 1000.0
+
+    def embed_query(self, text: str) -> np.ndarray:
+        """Embed a single query. Returns float32 `(dim,)`, L2-normalised.
+
+        Separate from `embed_texts` because this is the one embedding call on the hot
+        path, and because asymmetric models need a different prefix here. The current
+        model (MiniLM, mean-pooled) is symmetric and needs none — see DECISIONS.md D3.
+        """
+        return self.embed_texts([text], parallel=0)[0]
+
+
+def _l2_normalise(vecs: np.ndarray) -> np.ndarray:
+    norms = np.linalg.norm(vecs, axis=1, keepdims=True)
+    np.maximum(norms, 1e-12, out=norms)  # a zero vector would otherwise produce NaN
+    return vecs / norms
+
+
+def get_embedder(model_name: str | None = None) -> Embedder:
+    """Process-wide cached embedder. Thread-safe, double-checked."""
+    key = model_name or os.getenv("EMBED_MODEL", DEFAULT_MODEL)
+    if key not in _CACHE:
+        with _LOCK:
+            if key not in _CACHE:
+                _CACHE[key] = Embedder(key)
+    return _CACHE[key]
+
+
+__all__ = ["Embedder", "get_embedder", "DEFAULT_MODEL"]

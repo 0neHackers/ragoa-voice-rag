@@ -360,4 +360,9 @@ Verified after the fix: Cal Sans, JetBrains Mono and Noto Sans Devanagari all re
 `status: "loaded"`, and the `h1` computes to Cal Sans.
 Classified Minor: no behaviour or logic changed, only a URL that was already meant to point
 at this font.
+
+**Second process note.** Same slip as V6.0: the fix was made in `V6.0/` and committed with a
+`v6.1` label before the bump ran, so `V6.0/` carries this change too. Bumped properly
+afterwards. Recording it because the whole point of a per-version changelog is that the
+folder and the entry agree, and twice now they briefly didn't.
 **Supersedes:** V6.0
