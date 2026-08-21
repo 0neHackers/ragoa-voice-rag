@@ -19,3 +19,8 @@ __pycache__/
 **/*.faiss
 **/*.index
 **/corpus_cache/
+
+# Built indexes — reproducible from `python -m retrieval.build_index`
+**/index_store/
+**/index_store_dev/
+**/build_full.log
