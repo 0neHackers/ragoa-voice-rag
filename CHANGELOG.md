@@ -281,7 +281,7 @@ the deploy host plus a transcode in the request path. The client encodes 16kHz m
 directly and rejects silence and sub-0.4s clips before spending an STT call.
 **Supersedes:** V4.0
 
-## V5.1 — 2026-08-21
+## V6.0 — 2026-08-21
 **Type:** Major
 **Summary:** Rebuilt the web UI (boxy minimal, fluid 320–3840px, micro-animations), added
 deployment docs covering the Vercel constraint, recorded the chunking-comparison results,
@@ -338,4 +338,10 @@ actual content falls back to whatever the OS supplies. Disket Mono is genuinely 
 Fontfabric doesn't redistribute through npm or Google Fonts, so `@font-face` points at
 `/fonts/` for a local drop-in and Space Mono stands in until then, rather than letting the
 stack collapse silently to a default sans.
+**Process note — a versioning deviation, recorded rather than hidden.** This work was
+authored inside `V5.0/` after V5.0 had already been committed, and only bumped to `V6.0/`
+afterwards. Section 1.3 says a version folder freezes at bump time and is never edited
+again, so `V5.0/` is *not* a clean snapshot of what its own changelog entry describes — it
+contains this entry's changes too. `V6.0/` onward is correct. Noting it because a version
+history that quietly papers over its own violations is worth less than one that doesn't.
 **Supersedes:** V5.0
