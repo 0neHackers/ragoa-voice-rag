@@ -33,34 +33,37 @@ to play it.
 
 ## Option A — Render only, one URL *(recommended)*
 
-FastAPI already serves the HTML, so a single service gets you both. One link for the form,
-one thing that can break, done.
+FastAPI serves the page and the API together, so one service gets you both: one link for
+the form, one thing that can break.
 
-**1.** The repo is already pushed: https://github.com/0neHackers/ragoa-voice-rag
+**There's a Blueprint at the repo root now**, with `rootDir: V8.0` baked in — so you don't
+have to set a root directory by hand, which was the step most likely to trip you up.
 
-**2.** On Render: **New → Blueprint**, point it at your repo. `render.yaml` is already in
-`V7.0/` and configured.
+1. Go to [dashboard.render.com](https://dashboard.render.com) → **New** → **Blueprint**.
+2. Connect `0neHackers/ragoa-voice-rag`. Render finds `render.yaml` at the root by itself.
+3. It'll prompt for **`SARVAM_API_KEY`** — the only secret, marked `sync: false` so it
+   never touches git. Paste it there.
+4. **Apply.** First build takes **15–25 minutes**: it installs deps, downloads the dataset
+   parquet, and embeds all 15,449 chunks *into the image* so the container is ready the
+   instant it boots. The alternative — embedding at startup — means serving 503s for a
+   quarter of an hour while Render's health check kills and restarts it forever.
+5. Check `https://<your-service>.onrender.com/health` returns `"ok": true` with
+   `"index_size": 15449`.
 
-**3. Set the root directory to `master_repo/V7.0`.** Render looks for the Dockerfile
-relative to the repo root, and yours lives one level down. Either set it in the dashboard
-or move `V7.0/`'s contents to the repo root.
+**Stay on `starter` or higher.** The free tier's 512 MB will OOM — the index plus the ONNX
+session needs about a gig. Free instances also sleep after inactivity, and a judge opening a
+cold link and waiting 50 seconds is not the first impression you want.
 
-**4.** Add your keys in the dashboard — `SARVAM_API_KEY` and `ANTHROPIC_API_KEY`. They're
-marked `sync: false` in the blueprint specifically so they never end up in git.
+The blueprint pins `region: singapore`, the closest Render region to India and to Sarvam's
+endpoints. Every generation, translation and TTS call is a round trip to Sarvam, so region
+choice shows up directly in the latency a judge sees.
 
-**5. Stay on the `starter` plan or higher.** The free tier's 512 MB will OOM — the index
-plus the ONNX session needs about a gig. Free instances also sleep after inactivity, and a
-judge hitting a cold link and waiting 50 seconds is not the first impression you want.
+### If you'd rather I did it
 
-**6.** First build takes **15–20 minutes**, because the Dockerfile embeds all 15,449 chunks
-during the image build rather than at container start. That's deliberate: the alternative is
-a container that boots and then serves 503s for a quarter of an hour while Render's health
-check kills it and retries forever.
-
-**7.** Check `https://your-app.onrender.com/health` returns `"ok": true`, then open the root
-URL in an incognito window and actually ask it something.
-
----
+I can't — Render's API returns 401 without a token and I have no credentials for your
+account. If you want me to run the deploy and verify it end to end, generate a key at
+**Render Dashboard → Account Settings → API Keys → Create API Key** and send it. Otherwise
+the five steps above are the whole job.
 
 ## Option B — Vercel frontend + Render backend
 
@@ -78,7 +81,7 @@ window.__API_BASE__ = 'https://voice-rag-0nehackers.onrender.com';
 **3.** Deploy just the `demo/` folder to Vercel:
 
 ```bash
-cd master_repo/V7.0/demo
+cd master_repo/V8.0/demo
 npx vercel --prod
 ```
 
@@ -96,8 +99,8 @@ will silently do nothing. Serve it over http://localhost or https://, always.
 ## Option C — Hugging Face Spaces
 
 Honestly a decent fit, since the model and dataset are already on HF and the free tier gives
-you 16 GB. Create a Space with the **Docker** SDK, push the contents of `V7.0/`, and add the
-two keys as Space secrets. Same Dockerfile, no changes.
+you 16 GB. Create a Space with the **Docker** SDK, push the contents of `V8.0/`, and add
+`SARVAM_API_KEY` as a Space secret. Same Dockerfile, no changes.
 
 ---
 
@@ -105,7 +108,7 @@ two keys as Space secrets. Same Dockerfile, no changes.
 
 **https://github.com/0neHackers/ragoa-voice-rag** — public, `main`, 15 commits, 434 files.
 
-The per-phase history (V0.0 → V7.0) is intact, which matters: Video 1 is about process, and
+The per-phase history (V0.0 → V8.0) is intact, which matters: Video 1 is about process, and
 a repo with one giant commit dated the day of the deadline tells the opposite story. Each
 version folder is a frozen snapshot with its own dated `CHANGELOG.md` entry.
 
@@ -119,8 +122,8 @@ The real `.env` is git-ignored, and no key material is in any tracked file. The 
 (38 MB) is excluded too — it's reproducible from `retrieval.build_index`, so committing it
 into every version folder would bloat history for nothing.
 
-> **Rotate both API keys once judging closes.** They went through a chat transcript, so treat
-> them as exposed no matter how carefully the repo handles them.
+> **Rotate the Sarvam key once judging closes.** It went through a chat transcript, so treat
+> it as exposed no matter how carefully the repo handles it.
 
 ---
 
@@ -131,5 +134,7 @@ into every version folder would bloat history for nothing.
 - [ ] Ask a real question, get a real answer
 - [ ] Ask something the corpus can't answer, get a refusal with a reason
 - [ ] Microphone works on the deployed URL, not just localhost
+- [ ] Tick **Translate from English** and ask an English question — it should answer
+- [ ] Press **Hear it** on both the question and the answer — Hindi audio should play
 - [ ] Try it on a phone — the layout goes down to 320px, so it should be fine, but look
 - [ ] **Leave it running past the deadline.** You don't know the judging window.

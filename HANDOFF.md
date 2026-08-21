@@ -8,110 +8,96 @@
 
 | Requirement | Status |
 |---|---|
-| Voice → speech-to-text | **Working and verified end to end against the live API.** Runs on batch, labelled as batch — streaming returns nothing on this account (details below). |
-| 4 chunking strategies | Done, and benchmarked against each other on recall@5 / MRR |
+| Voice → speech-to-text | **Working, verified against the live API.** Sarvam batch, labelled as batch — streaming returns nothing on this account. |
+| 4 chunking strategies | Done, benchmarked against each other on recall@5 / MRR |
 | Vector retrieval | Done — FAISS in-process, 15,449 chunks, hybrid with BM25 |
-| Under 200ms | **Met. P50 99.17ms, P70 102.39ms, P100 127.53ms** — every query inside budget |
-| P50/P70/P100 across 30–50+ queries | Done, 50 real dataset queries |
+| Under 200ms | **Met. P50 102.09ms, P70 106.01ms, P100 117.85ms** — 100% of queries inside budget |
+| P50/P70/P100 across 30–50+ queries | Done, 50 real dataset queries, live generation |
 | Harness | Done — typed I/O, selective retries, per-stage error handling |
 | Guardrails | Done — 4 of them, 3 positions, every refusal structured |
-| Tests | 167, all passing |
-| Web UI | Rebuilt — boxy minimal, fluid 320px → 3840px, all four fonts + both team marks live |
-| GitHub repo | **Done** — https://github.com/0neHackers/ragoa-voice-rag (public, 14 commits) |
-| Live link | **Yours to do** |
+| Answer generation | **Live** — `sarvam-105b-conversations`, real Hindi answers |
+| English→Hindi translation | Done, opt-in toggle, ~860ms |
+| Speak aloud (question + answer) | Done, Sarvam TTS, Hindi |
+| Tests | 171, all passing |
+| Web UI | Boxy minimal, fluid 320→3840px, four fonts, both team marks placed |
+| GitHub repo | **Done** — https://github.com/0neHackers/ragoa-voice-rag |
+| Live link | **Needs your Render account** — see below |
 | 2 videos + 6 social posts | **Yours to do** |
 
 ---
 
-## 1. Keys — both in, both tested
+## 1. One key now — Anthropic is gone
 
-Your keys are in `master_repo/V7.0/.env`, which is git-ignored. I verified nothing secret
-reached the remote before pushing.
+Everything runs on `SARVAM_API_KEY`: speech-to-text, answer generation, translation, and
+text-to-speech. Your key is in `master_repo/V8.0/.env`, which is git-ignored.
 
-> **Rotate both after the hackathon.** They were pasted into a chat transcript, so treat them
-> as exposed regardless of how carefully the repo is handling them.
+> **Rotate it once judging closes.** It went through a chat transcript, so treat it as
+> exposed regardless of how carefully the repo handles it.
 
-**Sarvam works. Streaming doesn't, on this account.** I tested it properly and found two real
-bugs in my own client along the way — details in `README.md`, but the summary is that the
-WebSocket endpoint connects, authenticates, validates the model, accepts every audio frame,
-and returns **zero transcript frames**, across every chunk cadence and endpoint I tried. The
-batch REST endpoint transcribes the same audio perfectly on the first try.
+**Why Claude was removed.** The immediate reason is the one you gave — the key had no
+credits, so generation ran permanently in extractive fallback. The better reason is
+architectural: STT, translation and TTS were already Sarvam, so a second provider meant two
+keys, two auth schemes, two rate limits, and two independent ways for the demo to break in
+front of judges. One credential is one failure mode.
 
-So the pipeline runs on batch, labelled `transport: "batch"` everywhere it's reported. It's a
-deviation from the plan and it's visible rather than buried. If Sarvam enables streaming on
-your account, `STT_TRANSPORT=streaming` exercises that path with no code change.
+Generation now runs on `sarvam-105b-conversations`, and **you get real generated Hindi
+answers** rather than extracted passages — which is a better demo than what Claude was
+giving you, since Claude was giving you nothing.
 
-Verified end to end by using Sarvam's own TTS to synthesise Hindi speech and feeding it back
-through the whole pipeline:
-
-```
-spoken     : ईमानदारी या सच्चाई की परिभाषा क्या है
-transcript : ईमानदारी या सच्चाई की परिभाषा क्या है?     (exact)
-STT 1146ms · retrieval 121.8ms · full 2430ms · all 4 guardrails passed
-```
-
-**The Anthropic key has no credits.** The API returns `credit balance is too low`. That
-arrives as an HTTP 400, which was taking the whole request down with it, so I made it degrade
-to extractive mode with the reason stated in the response instead. The system answers, and it
-says plainly that the answer is a retrieved passage rather than generated text.
-
-**If you want generated answers in the demo video, you need to put credits on that account.**
-Roughly $5 is far more than enough — Haiku at these token counts costs fractions of a cent per
-query. Everything else works without it; you'd just be showing extractive answers.
-
-Once credits are on, re-run this for a real end-to-end latency figure:
-
-```bash
-cd master_repo/V7.0
-python -m benchmarks.latency --n 50
-```
-
-The current full-pipeline number is flagged `"full_pipeline_includes_llm": false` for exactly
-this reason. Don't quote it as end-to-end latency until it's been re-run. The retrieval number
-(99ms P50) is real and stands on its own.
+Picking that model was worth measuring. Sarvam's other chat model, `sarvam-105b`, is a
+reasoning model: 25.5 seconds and 865 tokens on a question the conversations variant
+answered in 2.3 seconds and 21 tokens — and at a normal token budget it spent everything
+thinking and returned an empty answer.
 
 ---
 
-## 2. Deployment — the one thing still open
+## 2. Deployment — the only thing left that I can't do
 
-Full detail in **[DEPLOY.md](DEPLOY.md)**.
+**I cannot deploy for you.** Render's API returns 401 without a token, and I have no
+credentials for your account. If you want me to run it and verify end to end, generate a key
+at **Render Dashboard → Account Settings → API Keys → Create API Key** and send it. Your
+Render login is `0xshanzal@gmail.com`.
 
-- **Vercel can't run the backend.** Serverless functions cap at 250 MB; the embedding model
-  alone is 240 MB and the whole payload is ~375 MB. Not a config problem — it doesn't fit.
-- **Recommended: Render only, one URL.** FastAPI serves the page and the API together, so
-  it's one link for the form and one thing to keep alive.
-- If you want Vercel for the frontend anyway, set `window.__API_BASE__` in `demo/config.js`
-  to the Render URL and deploy `demo/` as a static site. CORS is already open and the route
-  is already wired.
+Otherwise it's five steps, and I've removed the fiddly one:
 
-What I need from you:
+1. [dashboard.render.com](https://dashboard.render.com) → **New** → **Blueprint**
+2. Connect `0neHackers/ragoa-voice-rag` — there's now a `render.yaml` **at the repo root**
+   with `rootDir: V8.0` baked in, so you don't have to set a root directory by hand
+3. Paste `SARVAM_API_KEY` when prompted (marked `sync: false`, never touches git)
+4. **Apply.** First build is **15–25 minutes** — it embeds all 15,449 chunks into the image
+   so the container is ready the moment it boots
+5. Check `/health` returns `"ok": true` with `"index_size": 15449`
 
-- A **Render** account on the **starter** plan or higher. The free tier's 512 MB will OOM,
-  and sleeping instances make a terrible first impression on a cold judge link.
-- Both keys pasted into the Render dashboard (never the repo).
-- Render's root directory set to **`master_repo/V7.0`** — the Dockerfile lives one level
-  down from the repo root.
+**Stay on `starter` or above.** Free's 512 MB will OOM, and sleeping instances make a bad
+first impression on a cold judge link.
 
-Budget **15–20 minutes** for the first build. The Dockerfile bakes the index into the image
-so the container is ready the moment it boots rather than serving 503s while it embeds.
+> **One thing I could not verify:** I tried to build the Docker image locally to de-risk
+> this, and Docker Desktop wouldn't start on your machine, so the container build is
+> **untested**. Every step inside it is individually verified — the dependency install, the
+> index build, the app boot — but not the assembled image on Linux. Watch that first Render
+> build rather than walking away from it. If it fails, the log will name the line.
+
+Full detail, including why Vercel can't host the backend (250 MB function limit against a
+~375 MB payload), is in **[DEPLOY.md](DEPLOY.md)**.
 
 ---
 
-## 3. Fonts and branding — done
+## 3. What's new in the app since you last saw it
 
-All four faces load and are confirmed applied in the browser:
-
-- **Cal Sans** — display headings (jsDelivr)
-- **JetBrains Mono** — body, data, numbers (Google Fonts)
-- **Disket Mono** — labels and metrics. Converted your TTFs to woff2, 82KB → 18KB each.
-- **Noto Sans Devanagari** — every Hindi passage and answer. Not optional: neither JetBrains
-  Mono nor Cal Sans has Devanagari glyphs, so without it the actual content falls back to
-  whatever the OS supplies.
-
-Both SVGs are in the footer — the `0neHackers` wordmark and the `made by` lockup — served
-from `/assets`, rendering at their natural aspect ratios, with no page overflow down to
-320px. The made-by mark ships as flat `#6B6B75`, which sits too close to the panel colour in
-dark mode, so it's lifted optically with a CSS filter rather than by editing your file.
+- **Team wordmark** sits top-right in the masthead, baseline-aligned with "Voice RAG." and
+  sized to its cap height. Verified by measurement: 0px from the container edge, 0px
+  baseline delta.
+- **Made-by mark** is centred in the footer, below enlarged meta text — 11.5px against
+  22.1px, so it reads as a signature rather than a banner.
+- **Translate toggle** — "Translate my question from English to Hindi first". Off by
+  default, and deliberately so: auto-translating would silently disable a guardrail that
+  exists because of a measured failure, and it would mangle romanised Hindi like
+  "bharat ki rajdhani kya hai", which is already a Hindi question. The UI shows the original
+  and the translation side by side, so a translated query is never passed off as what you
+  typed.
+- **Hear it** buttons on both the question and the answer. Hindi TTS, one shared player so
+  pressing the second stops the first. Citation markers are stripped before synthesis —
+  `[1][2]` reads as "one two" out loud otherwise.
 
 ---
 
@@ -166,19 +152,17 @@ verified before you click.
 
 Everything I can do without you is done. What's left:
 
-1. **A Render account**, starter plan or above, with both keys set in its dashboard and the
-   root directory set to `master_repo/V7.0`. This is the only thing standing between you and
-   a live link.
-2. **Credits on the Anthropic account** — only if you want *generated* rather than extractive
-   answers in the demo. ~$5 is plenty. Everything works without it.
-3. **The two videos**, with mic audio verified before the real take.
-4. **Six posts** — three people, two platforms each, every one tagged `#RAGInGoa`, all
+1. **Deploy on Render** — starter plan or above, `SARVAM_API_KEY` in the dashboard. Either
+   do the five steps above, or send me a Render API key and I'll do it and verify it.
+2. **The two videos**, with mic audio verified before the real take.
+3. **Six posts** — three people, two platforms each, every one tagged `#RAGInGoa`, all
    accounts public.
-5. **The submission form**, filled completely and submitted once.
-6. **Confirmation the participation form is already in** — it's a separate form.
-7. **Rotate both API keys** after judging closes.
+4. **The submission form**, filled completely and submitted once.
+5. **Confirmation the participation form is already in** — it's a separate form.
+6. **Rotate the Sarvam key** after judging closes.
 
-Nothing here is blocked on me. Send me a Render URL and I'll verify it cold.
+Only item 1 is blocked on me having something I don't have. Send me a Render URL — or a
+Render API key — and I'll verify the deployment cold.
 
 ---
 
