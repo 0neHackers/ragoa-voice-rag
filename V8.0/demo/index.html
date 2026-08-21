@@ -136,10 +136,15 @@ body {
 
 /* ─── header ─────────────────────────────────────────────────────────────── */
 .masthead { border-bottom: var(--line) solid var(--border); padding-bottom: var(--sp-4); margin-bottom: var(--sp-5); }
-/* Title left, team mark right, baselines aligned. Wraps to two rows below ~30rem so the
-   mark drops under the title instead of squeezing it. */
+/* Title left, team mark right, optically centred against each other.
+   `center` rather than `flex-end`: the two are different kinds of object — a line of text
+   with descender space below the baseline, and a tightly-cropped SVG with none. Aligning
+   their boxes at the bottom therefore sits the mark *lower* than the title looks, which is
+   what "align it vertically" was pointing at. Centring the boxes puts their visual masses
+   level. Wraps to two rows below ~30rem so the mark drops under the title rather than
+   squeezing it. */
 .masthead__top {
-  display: flex; align-items: flex-end; justify-content: space-between;
+  display: flex; align-items: center; justify-content: space-between;
   gap: var(--sp-3); flex-wrap: wrap; margin-bottom: var(--sp-2);
 }
 .masthead h1 { font-family: var(--f-display); font-size: var(--step-4); margin: 0; letter-spacing: -0.03em; line-height: 1; }

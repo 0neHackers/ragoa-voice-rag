@@ -47,6 +47,14 @@ class GuardrailSuite:
         only the retriever can supply — hence this constructor rather than a bare
         `GuardrailSuite()`.
         """
+        # The groundedness check needs an embedder for its semantic signal. The retriever
+        # already owns a warmed one, so reuse it rather than loading a second 240MB ONNX
+        # session into the same process.
+        overrides.setdefault(
+            "groundedness",
+            GroundednessGuardrail(embedder=getattr(retriever, "embedder", None)),
+        )
+
         language_match: LanguageMatchGuardrail | None = None
         try:
             language_match = LanguageMatchGuardrail.from_chunks(retriever.chunks)  # type: ignore[attr-defined]

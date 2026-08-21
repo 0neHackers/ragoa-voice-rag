@@ -294,3 +294,100 @@ class TestGuardrailSuite:
     def test_every_verdict_is_timed(self, suite):
         verdicts = suite.run_pre_retrieval("भारत क्या है?", np.zeros(384, dtype="float32"))
         assert all(v.elapsed_ms >= 0.0 for v in verdicts)
+
+
+class TestSemanticGroundedness:
+    """The semantic signal, and the OR that makes the pair usable.
+
+    The lexical-only version had to be retuned twice and still broke the demo — a stale
+    process on an intermediate threshold refused essentially every real question. These
+    pin the behaviour that replaced it.
+    """
+
+    class _FakeEmbedder:
+        """Returns unit vectors from a lookup, so similarity is exactly what a test says."""
+
+        def __init__(self, mapping: dict[str, list[float]]) -> None:
+            self.mapping = mapping
+
+        def embed_texts(self, texts, **kw):
+            import numpy as np
+
+            out = []
+            for t in texts:
+                vec = np.array(self.mapping.get(t[:2000], [0.0, 1.0]), dtype="float32")
+                out.append(vec / (np.linalg.norm(vec) or 1.0))
+            return np.vstack(out)
+
+    def test_semantic_pass_rescues_a_faithful_paraphrase(self):
+        """The case that was breaking everything: a faithful answer that reworded the
+        context, so lexical overlap was near zero."""
+        answer_text = "पूरी तरह अलग शब्दों में वही बात"
+        context = "मूल पाठ बिलकुल दूसरे शब्दों का प्रयोग करता है"
+        guard = GroundednessGuardrail(
+            min_overlap=0.25, min_semantic=0.30,
+            embedder=self._FakeEmbedder({answer_text: [1.0, 0.0], context: [0.9, 0.44]}),
+        )
+        answer = Answer(text=answer_text, mode="generated", model="test")
+        verdict = guard.run("q", answer, _retrieval(_scored(context, 0.8)))
+        assert verdict.passed
+        assert "semantically grounded" in verdict.reason
+
+    def test_lexical_pass_rescues_a_low_semantic_answer(self):
+        """The other direction — heavy wording reuse, weak embedding match."""
+        context = "ईमानदारी सच्चाई निष्पक्षता अखंडता सम्मान"
+        answer_text = "ईमानदारी सच्चाई निष्पक्षता अखंडता"
+        guard = GroundednessGuardrail(
+            min_overlap=0.25, min_semantic=0.30,
+            embedder=self._FakeEmbedder({answer_text: [1.0, 0.0], context: [0.0, 1.0]}),
+        )
+        answer = Answer(text=answer_text, mode="generated", model="test")
+        verdict = guard.run("q", answer, _retrieval(_scored(context, 0.8)))
+        assert verdict.passed
+        assert "reuses the passages" in verdict.reason
+
+    def test_blocks_only_when_both_signals_fail(self):
+        context = "ईमानदारी की परिभाषा"
+        answer_text = "Photosynthesis converts sunlight into chemical energy"
+        guard = GroundednessGuardrail(
+            min_overlap=0.25, min_semantic=0.30,
+            embedder=self._FakeEmbedder({answer_text: [1.0, 0.0], context: [0.0, 1.0]}),
+        )
+        answer = Answer(text=answer_text, mode="generated", model="test")
+        verdict = guard.run("q", answer, _retrieval(_scored(context, 0.8)))
+        assert not verdict.passed
+        assert "not grounded" in verdict.reason
+
+    def test_invented_number_blocks_even_with_high_semantic_score(self):
+        """A fabricated figure is a hard block — similarity doesn't buy it a pass."""
+        context = "कंपनी का राजस्व बढ़ा"
+        answer_text = "कंपनी का राजस्व 47 प्रतिशत बढ़ा"
+        guard = GroundednessGuardrail(
+            min_overlap=0.25, min_semantic=0.30,
+            embedder=self._FakeEmbedder({answer_text: [1.0, 0.0], context: [1.0, 0.0]}),
+        )
+        answer = Answer(text=answer_text, mode="generated", model="test")
+        verdict = guard.run("q", answer, _retrieval(_scored(context, 0.8)))
+        assert not verdict.passed
+        assert "47" in verdict.reason
+
+    def test_without_an_embedder_it_says_so_rather_than_passing_silently(self):
+        context = "एक असंबंधित संदर्भ"
+        answer_text = "Photosynthesis converts sunlight into chemical energy in chloroplasts"
+        guard = GroundednessGuardrail(min_overlap=0.25, min_semantic=0.30, embedder=None)
+        answer = Answer(text=answer_text, mode="generated", model="test")
+        verdict = guard.run("q", answer, _retrieval(_scored(context, 0.8)))
+        assert not verdict.passed
+        assert "no embedder" in verdict.reason
+
+    def test_embedder_failure_degrades_instead_of_erroring(self):
+        class Broken:
+            def embed_texts(self, texts, **kw):
+                raise RuntimeError("onnx session died")
+
+        context = "ईमानदारी सच्चाई निष्पक्षता"
+        answer_text = "ईमानदारी सच्चाई निष्पक्षता"
+        guard = GroundednessGuardrail(min_overlap=0.25, min_semantic=0.30, embedder=Broken())
+        answer = Answer(text=answer_text, mode="generated", model="test")
+        verdict = guard.run("q", answer, _retrieval(_scored(context, 0.8)))
+        assert verdict.passed  # lexical carried it

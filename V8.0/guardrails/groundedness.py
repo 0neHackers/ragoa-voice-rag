@@ -1,58 +1,62 @@
 """Guardrail 4 — groundedness check, post-generation.
 
-The last line of defence: the model had good context and drifted anyway. This is the
-only check positioned to catch that, because it is the only one that sees the generated
-text.
+The last line of defence: the model had good context and drifted anyway. It's the only
+check positioned to catch that, because it's the only one that sees the generated text.
 
-**The default is a lexical-overlap check, and that's a choice.** The textbook answer is an
-NLI/entailment pass or a second "is this answer supported? yes/no" LLM call. That is more
-accurate and it is implemented here (`use_llm=True`), but it doubles the number of
-provider round-trips on a latency-graded pipeline, so it is opt-in rather than default.
+## Two signals, combined with OR, because they fail on different answers
 
-What the cheap check measures: the fraction of the answer's *content* tokens that appear
-in the retrieved context. An extractive or faithfully-grounded answer reuses the
-context's vocabulary heavily — proper nouns, numbers, domain terms. A hallucinated answer
-introduces entities that are simply not in the context. Stopwords are stripped in both
-Hindi and English, because otherwise a long answer's function words alone push overlap
-past any threshold.
+**Semantic** — cosine between the answer's embedding and each retrieved chunk's, taking
+the best match. Costs one extra embedding call (~95ms), which sits in the generation half
+of the pipeline where a ~2.7s LLM call already dominates, not in the 200ms retrieval
+budget.
 
-**The threshold is measured against real generated answers, and it had to move twice.**
-It started at 0.45, calibrated back when generation was extractive — answers that were
-literal copies of the context, so overlap was trivially high and the threshold cost
-nothing. The moment a real model began writing Hindi paraphrase, that number turned into a
-false-refusal machine. Measured over 40 faithful generated answers:
+**Lexical** — the fraction of the answer's content tokens that appear in the context, with
+Hindi and English stopwords stripped.
 
-    min 0.091 · p10 0.214 · median 0.633
+An answer passes if **either** clears its bar. That's not hedging, it's the shape of the
+data: a heavy but faithful paraphrase scores low lexically and high semantically, while a
+copied-but-irrelevant span does the reverse. Their failures are close to uncorrelated, so
+requiring both would compound two false-refusal rates, and requiring either compounds the
+two catch rates instead. A genuine hallucination fails both, which is exactly what makes
+the OR safe.
 
-    threshold   faithful answers refused
-    0.45        37.5%
-    0.40        25.0%
-    0.35        20.0%
-    0.30        17.5%
-    0.25        12.5%
-    0.20         7.5%   <- shipped
-    0.15         2.5%
+## The numbers, and why this replaced a lexical-only check
 
-0.45 was rejecting well over a third of correct answers. 0.20 keeps a real floor — an
-answer sharing almost no vocabulary with its context still trips it — at a false-refusal
-cost of roughly 1 in 13.
+Measured over 30 real generated answers. "Hallucinated" pairs each answer with a *different*
+question's retrieved context — same model, same language, same length, the only difference
+being whether the answer is about the passages. That is precisely the judgement this
+guardrail has to make.
 
-**Three limits, stated rather than buried.** (1) That residual 7.5% is real: a faithful
-answer scoring 0.09 is genuinely indistinguishable from a hallucination by this metric, and
-going lower would stop it measuring anything. (2) A perfectly faithful paraphrase can still
-score low, so this catches answers that invent *entities*, not answers that reword. (3) It
-cannot detect a confident wrong *inference* drawn entirely from words present in the
-context.
+    semantic (best-matching chunk)
+      faithful      min 0.076 · p05 0.170 · p10 0.302 · median 0.708
+      hallucinated  median 0.122 · p90 0.256 · max 0.413
 
-So this is one layer of three, and not the load-bearing one. The unsupported-number check
-below is the sharp instrument — fabricated figures are the highest-damage and most common
-hallucination in retrieval QA — and the retrieval-confidence gate upstream stops most
-ungrounded answers from being generated at all. The `use_llm` entailment path exists for
-anyone willing to pay a second round-trip for something better.
+    combination                        faithful refused   hallucinations caught
+    semantic>=0.25 OR lexical>=0.20            3.3%              80.0%
+    semantic>=0.30 OR lexical>=0.25            3.3%              86.7%   <- shipped
+    semantic>=0.40 OR lexical>=0.25            6.7%              86.7%
 
-Numbers get extra weight. A fabricated statistic or date is the highest-damage and
-most-common hallucination in retrieval QA, and it is exactly the case lexical overlap
-detects most reliably.
+This guardrail was previously lexical-only, and it had to be retuned twice — 0.45 refused
+37.5% of faithful answers once real paraphrase replaced extractive copies, and even 0.20 sat
+at 7.5%. Worse, a stale process running the intermediate 0.30 refused essentially everything
+a user typed. A metric needing that much tuning to stay usable was the wrong metric; adding
+the semantic signal cut false refusals to 3.3% *and* roughly doubled what gets caught.
+
+Comparing against the best single chunk rather than the concatenated context matters too:
+whole-context embedding dilutes an answer synthesised mostly from one passage, and switching
+lifted the faithful floor from 0.005 to 0.076.
+
+## What it still can't do
+
+It cannot detect a confident wrong *inference* drawn entirely from words and ideas present
+in the context — that answer is, by both signals, grounded. The residual 3.3% false-refusal
+rate is real too. So this stays one layer of three: the unsupported-number check below is
+the sharp instrument, and the retrieval-confidence gate upstream stops most ungrounded
+answers from ever being generated.
+
+Numbers get extra weight. A fabricated statistic or date is the highest-damage and most
+common hallucination in retrieval QA, and it's the case a bounded check detects reliably —
+so an unsupported figure is a hard block regardless of how either similarity score lands.
 """
 
 from __future__ import annotations
@@ -61,13 +65,19 @@ import os
 import re
 import unicodedata
 
+import numpy as np
+
 from harness.types import Answer, GuardrailVerdict, RetrievalResult
 from guardrails.base import Guardrail
 
-DEFAULT_MIN_OVERLAP = 0.20
+#: Cosine against the best-matching retrieved chunk.
+DEFAULT_MIN_SEMANTIC = 0.30
 
-#: A number in the answer that is absent from the context is treated as fabricated
-#: regardless of how well the surrounding prose overlaps.
+#: Fraction of the answer's content tokens present in the context.
+DEFAULT_MIN_OVERLAP = 0.25
+
+#: A figure in the answer that is absent from the context is treated as fabricated
+#: regardless of how well the answer scores on either similarity signal.
 PENALISE_UNSUPPORTED_NUMBERS = True
 
 _TOKEN_RE = re.compile(r"[\wऀ-ॿ]+", re.UNICODE)
@@ -95,6 +105,8 @@ class GroundednessGuardrail(Guardrail):
         self,
         min_overlap: float | None = None,
         *,
+        min_semantic: float | None = None,
+        embedder: object | None = None,
         use_llm: bool = False,
         llm_client: object | None = None,
     ) -> None:
@@ -102,80 +114,128 @@ class GroundednessGuardrail(Guardrail):
             float(os.getenv("GUARDRAIL_MIN_OVERLAP", DEFAULT_MIN_OVERLAP))
             if min_overlap is None else float(min_overlap)
         )
+        self.min_semantic = (
+            float(os.getenv("GUARDRAIL_MIN_SEMANTIC", DEFAULT_MIN_SEMANTIC))
+            if min_semantic is None else float(min_semantic)
+        )
+        self.embedder = embedder
         self.use_llm = use_llm
         self.llm_client = llm_client
 
     def _check(  # type: ignore[override]
         self, query: str, answer: Answer, retrieval: RetrievalResult
     ) -> GuardrailVerdict:
-        context = " ".join(sc.chunk.text for sc in retrieval.chunks)
+        chunks = [sc.chunk.text for sc in retrieval.chunks]
+        context = " ".join(chunks)
 
         if not answer.text.strip():
             return self._block(reason="Generator returned an empty answer.", score=0.0,
-                               threshold=self.min_overlap)
+                               threshold=self.min_semantic)
 
-        # An extractive answer is a verbatim span of the context. Scoring it for lexical
-        # overlap is measuring whether a copy resembles its original.
+        # An extractive answer is a verbatim span of the context. Scoring it for similarity
+        # is measuring whether a copy resembles its original.
         if answer.mode == "extractive":
-            return self._pass(score=1.0, threshold=self.min_overlap,
+            return self._pass(score=1.0, threshold=self.min_semantic,
                               reason="Answer is a verbatim span of the retrieved context.")
 
-        context_tokens = _content_tokens(context)
-        answer_tokens = _content_tokens(answer.text)
-
-        if not answer_tokens:
-            return self._pass(score=1.0, threshold=self.min_overlap,
-                              reason="Answer carries no content tokens to verify.")
-
-        supported = sum(1 for tok in answer_tokens if tok in context_tokens)
-        overlap = supported / len(answer_tokens)
-
+        # -- hard block: figures the context never mentions ---------------------
         if PENALISE_UNSUPPORTED_NUMBERS:
             context_numbers = set(_NUMBER_RE.findall(_fold(context)))
-            # Strip `[1][2]` citation markers before looking for figures. They're
-            # bracket indices into the passage list, not claims about the world, and
-            # counting them as fabricated statistics made this guardrail reject every
-            # correctly-cited answer the model produced — the exact behaviour it exists
-            # to reward.
+            # Strip `[1][2]` citation markers first. They're bracket indices into the
+            # passage list, not claims about the world, and counting them as fabricated
+            # statistics rejected every correctly-cited answer the model produced — the
+            # exact behaviour this system asks for.
             answer_numbers = set(_NUMBER_RE.findall(_fold(_CITATION_RE.sub(" ", answer.text))))
             invented = answer_numbers - context_numbers
             if invented:
                 return self._block(
                     reason=(
-                        f"Answer contains figures absent from the retrieved passages "
+                        "Answer contains figures absent from the retrieved passages "
                         f"({', '.join(sorted(invented)[:3])}) — treating as fabricated."
                     ),
-                    score=overlap, threshold=self.min_overlap,
+                    score=0.0, threshold=self.min_semantic,
                 )
 
-        if overlap < self.min_overlap:
+        # -- similarity: either signal is enough --------------------------------
+        lexical = _lexical_overlap(answer.text, context)
+        semantic = self._semantic_similarity(answer.text, chunks)
+
+        if semantic is None:
+            # No embedder wired in — fall back to lexical alone rather than passing
+            # everything, and say so, because a silently-disabled guardrail is worse
+            # than a noisy one.
+            if lexical >= self.min_overlap:
+                return self._pass(score=lexical, threshold=self.min_overlap,
+                                  reason=f"{lexical:.0%} lexical overlap (no embedder for the "
+                                         "semantic check).")
             return self._block(
                 reason=(
-                    f"Only {overlap:.0%} of the answer's content words appear in the "
-                    f"retrieved passages (threshold {self.min_overlap:.0%}) — the answer is "
-                    "not sufficiently grounded in the context."
+                    f"Only {lexical:.0%} of the answer's content words appear in the retrieved "
+                    f"passages (threshold {self.min_overlap:.0%}), and no embedder was available "
+                    "for the semantic check."
                 ),
-                score=overlap, threshold=self.min_overlap,
+                score=lexical, threshold=self.min_overlap,
             )
 
-        if self.use_llm and self.llm_client is not None:
-            return self._llm_entailment(answer, context, overlap)
+        if semantic >= self.min_semantic:
+            verdict = self._pass(
+                score=semantic, threshold=self.min_semantic,
+                reason=f"Answer is semantically grounded in the retrieved passages "
+                       f"(similarity {semantic:.2f}, lexical overlap {lexical:.0%}).",
+            )
+            if self.use_llm and self.llm_client is not None:
+                return self._llm_entailment(answer, context, semantic)
+            return verdict
 
-        return self._pass(score=overlap, threshold=self.min_overlap,
-                          reason=f"{overlap:.0%} of answer content words are supported by the context.")
+        if lexical >= self.min_overlap:
+            return self._pass(
+                score=lexical, threshold=self.min_overlap,
+                reason=f"Answer reuses the passages' wording ({lexical:.0%} overlap) despite a "
+                       f"low semantic score ({semantic:.2f}).",
+            )
 
-    def _llm_entailment(self, answer: Answer, context: str, overlap: float) -> GuardrailVerdict:
+        return self._block(
+            reason=(
+                f"Answer is not grounded in the retrieved passages — semantic similarity "
+                f"{semantic:.2f} (threshold {self.min_semantic:.2f}) and only {lexical:.0%} of "
+                f"its content words appear in them (threshold {self.min_overlap:.0%})."
+            ),
+            score=semantic, threshold=self.min_semantic,
+        )
+
+    # ------------------------------------------------------------------ #
+
+    def _semantic_similarity(self, answer: str, chunks: list[str]) -> float | None:
+        """Best cosine between the answer and any single retrieved chunk.
+
+        Best-of rather than against the concatenation: an answer drawn mostly from one
+        passage gets diluted when compared to the average of five. Measured, that change
+        lifted the faithful-answer floor from 0.005 to 0.076.
+        """
+        if self.embedder is None or not chunks:
+            return None
+        try:
+            vectors = self.embedder.embed_texts(  # type: ignore[attr-defined]
+                [answer] + [c[:2000] for c in chunks]
+            )
+        except Exception:  # noqa: BLE001 - degrade to lexical rather than fail the request
+            return None
+
+        answer_vec = np.asarray(vectors[0])
+        return max(float(answer_vec @ np.asarray(v)) for v in vectors[1:])
+
+    def _llm_entailment(self, answer: Answer, context: str, score: float) -> GuardrailVerdict:
         """Opt-in second pass. Costs a full round-trip, so it runs only after the cheap
-        check has already passed — there is no point paying for it to confirm a rejection.
+        checks have already passed — no point paying for it to confirm a rejection.
         """
         verdict = self.llm_client.entailment_check(answer.text, context)  # type: ignore[attr-defined]
         if verdict is False:
             return self._block(
                 reason="Entailment check: the answer does not follow from the retrieved passages.",
-                score=overlap, threshold=self.min_overlap,
+                score=score, threshold=self.min_semantic,
             )
-        return self._pass(score=overlap, threshold=self.min_overlap,
-                          reason="Lexical overlap and entailment check both passed.")
+        return self._pass(score=score, threshold=self.min_semantic,
+                          reason="Similarity and entailment checks both passed.")
 
 
 def _fold(text: str) -> str:
@@ -186,4 +246,15 @@ def _content_tokens(text: str) -> set[str]:
     return {t for t in _TOKEN_RE.findall(_fold(text)) if t not in STOPWORDS and len(t) > 1}
 
 
-__all__ = ["GroundednessGuardrail", "DEFAULT_MIN_OVERLAP", "STOPWORDS"]
+def _lexical_overlap(answer: str, context: str) -> float:
+    """Fraction of the answer's content tokens that appear in the context."""
+    answer_tokens = _content_tokens(answer)
+    if not answer_tokens:
+        return 1.0
+    context_tokens = _content_tokens(context)
+    return sum(1 for t in answer_tokens if t in context_tokens) / len(answer_tokens)
+
+
+__all__ = [
+    "GroundednessGuardrail", "DEFAULT_MIN_OVERLAP", "DEFAULT_MIN_SEMANTIC", "STOPWORDS",
+]

@@ -492,3 +492,67 @@ right in the masthead (0px from the container edge) and baseline-aligned with th
 in the footer (0px offset) at 11.5px against 22.1px meta text, so it reads as a signature
 rather than a banner. No page overflow at any width.
 **Supersedes:** V7.0
+
+## V8.1 — 2026-08-22
+**Type:** Major
+**Summary:** Replaced the lexical-only groundedness check with a semantic + lexical OR after
+it refused essentially every real question; centred the team mark against the title.
+**Files changed:**
+- `guardrails/groundedness.py` — rewritten. Added `_semantic_similarity()` (best cosine
+  against any single retrieved chunk, via the retriever's existing embedder),
+  `_lexical_overlap()`; `DEFAULT_MIN_SEMANTIC = 0.30`, `DEFAULT_MIN_OVERLAP` 0.20 → 0.25;
+  an answer passes if **either** signal clears its bar.
+- `guardrails/suite.py` — `from_retriever()` now hands the groundedness check the
+  retriever's warmed embedder instead of loading a second ONNX session.
+- `demo/index.html` — `.masthead__top` uses `align-items: center`.
+- `tests/test_guardrails.py` — `TestSemanticGroundedness`, 6 tests. **177 passing.**
+- `benchmarks/semantic_groundedness_calibration.json` — new, the measurement below.
+**Details:**
+**The reported bug was real, and it had two layers.** The surface cause was a stale server
+process still running the intermediate 0.30 threshold, which refused nearly everything typed
+at it. The real cause is that lexical overlap is a poor proxy for groundedness once a model
+writes genuine paraphrase — it had already been retuned twice (0.45 → 0.30 → 0.20) and each
+number only held for the queries it was fitted on. My earlier benchmark used *dataset*
+queries, which is best case; real user phrasing retrieves less exactly, paraphrases more, and
+falls further down the same tail. That measurement gap is why the false-refusal rate looked
+acceptable while the demo was unusable.
+**Replaced rather than retuned.** Groundedness is now the OR of two signals: cosine between
+the answer's embedding and the best-matching retrieved chunk, and the previous content-token
+overlap. Measured over 30 real generated answers, with "hallucinated" pairs built by giving
+each answer a *different* question's context — same model, language and length, differing
+only in whether the answer is about the passages:
+
+```
+semantic (best-matching chunk)
+  faithful      min 0.076 · p05 0.170 · p10 0.302 · median 0.708
+  hallucinated  median 0.122 · p90 0.256 · max 0.413
+
+combination                        faithful refused   hallucinations caught
+lexical >= 0.20 only (V8.0)                7.5%              weak
+semantic>=0.25 OR lexical>=0.20            3.3%              80.0%
+semantic>=0.30 OR lexical>=0.25            3.3%              86.7%   <- shipped
+semantic>=0.40 OR lexical>=0.25            6.7%              86.7%
+```
+
+The OR is the point: a faithful paraphrase scores low lexically and high semantically, a
+copied-but-irrelevant span does the reverse, and their failures are close to uncorrelated.
+Requiring both would compound two false-refusal rates; requiring either compounds the two
+catch rates. A real hallucination fails both. **False refusals fell from 7.5% to 3.3% while
+catch roughly doubled** — the first change here that improved both sides at once.
+Comparing against the best single chunk rather than the concatenated context lifted the
+faithful floor from 0.005 to 0.076; whole-context embedding dilutes an answer synthesised
+mostly from one passage.
+Cost is one extra embedding call (~95ms), which lands in the generation half where a ~2.7s
+LLM call already dominates — not in the 200ms retrieval budget. If no embedder is available
+the check degrades to lexical-only and **says so in the verdict**, because a silently
+disabled guardrail is worse than a noisy one. An embedder that throws degrades the same way
+rather than failing the request.
+Verified after the change: 8/8 realistic user questions answered, and the full demo suite
+still refuses correctly — `low_confidence` for a plausible question the corpus lacks,
+`language_mismatch` for English, `low_confidence` for gibberish, `input_safety` for
+injection and harm.
+**Mark alignment:** `align-items: flex-end` was bottom-aligning a line of text (which
+reserves descender space) against a tightly-cropped SVG (which doesn't), sitting the mark
+visually low. Centring puts their visual masses level — measured, vertical centres now match
+exactly at 0px delta, right edge still flush at 0px.
+**Supersedes:** V8.0
