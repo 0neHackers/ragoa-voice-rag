@@ -144,3 +144,66 @@ process spawn would be pure overhead.
 Fixed: a literal NUL byte in the BM25 empty-document placeholder made `lexical.py` unimportable
 ("source code string cannot contain null bytes").
 **Supersedes:** V2.0
+
+## V4.0 — 2026-08-21
+**Type:** Major
+**Summary:** Phases 4–6 — the orchestration harness, four guardrails, and grounded
+generation. The pipeline now runs end to end from query to structured answer.
+**Files changed:**
+- `harness/orchestrator.py` — new. `VoiceRAGPipeline` with `run_audio()`/`run_text()`,
+  the `_run_stage()` wrapper (timing, selective retry, exception→`StageError`), `_timed()`,
+  `_is_model_refusal()`, `PipelineConfig`, `health()`.
+- `harness/factory.py` — new. `build_pipeline()` — the single assembly point every
+  entrypoint uses, with embedder warmup.
+- `guardrails/base.py` — new. `Guardrail` ABC; timing, error containment, fail-open/closed.
+- `guardrails/input_safety.py` — new. Harm + prompt-injection patterns, length cap, NFKC folding.
+- `guardrails/language_match.py` — new. `LanguageMatchGuardrail`, `from_chunks()` script
+  inference, `ROMANISED_HINDI_MARKERS`.
+- `guardrails/confidence.py` — new. Absolute top-score threshold plus margin-over-tail test.
+- `guardrails/groundedness.py` — new. Stopword-stripped content-token overlap, unsupported-number
+  penalty, optional LLM entailment path.
+- `guardrails/suite.py` — new. Groups guardrails by pipeline position.
+- `guardrails/off_topic.py` — **deleted**, see Details.
+- `generation/generator.py` — new. `Generator` (Claude Haiku 4.5), extractive fallback,
+  `NoAnswerFromModel`, `_resolve_citations()`.
+- `generation/prompts.py` — new. Grounding system prompt, numbered-passage rendering.
+- `retrieval/embedder.py` — `DEFAULT_THREADS = 1`; `EMBED_THREADS` override.
+- `tests/test_guardrails.py`, `tests/test_harness.py` — new, 64 tests. Suite now 147, all passing.
+**Details:**
+**The off-topic guardrail was removed because it was measured and found inverted.** It
+scored queries against the corpus centroid. On the 3,039-chunk index, real Hindi questions
+scored -0.035 and 0.252 while gibberish scored 0.184 and 0.234 — real questions ranked
+*below* nonsense. The cause is structural, not a bad threshold: a centroid points in the
+"average passage" direction, so similarity to it measures genericness, not topicality, and
+a specific question is nearly orthogonal to the mean. The signal that does separate them is
+max-similarity over the whole corpus — which is exactly the top dense score the confidence
+gate already thresholds, so a second semantic gate would have been a less precise copy of
+one the pipeline already runs, not an independent check. Semantic off-topic detection is
+therefore `low_confidence`'s job, and it does it with the real score rather than a proxy.
+Replaced with `language_mismatch`, which catches a failure the confidence gate provably
+cannot: the English query "what is the capital of france" scores **0.628** against the Hindi
+corpus — well above the 0.42 confidence threshold — because a multilingual embedder maps it
+near Hindi passages about countries, and MS MARCO genuinely contains them. Unguarded, that
+query gets a confident answer synthesised from passages that were never about it. The script
+check catches it in ~0.02ms with no embedding. Romanised Hindi is exempted so code-mixed
+transcripts still work.
+Fixed during that work: `the` (थे, "were") was in the romanised-Hindi marker list, so
+*every* English query exempted itself as Hinglish and the guardrail never fired. Words that
+are also ordinary English (`the`, `me`, `par`, `to`, `is`, `us`) are now excluded — a marker
+that fires on English costs the guardrail its entire purpose, while a missing marker costs
+only a little Hinglish recall.
+**ONNX threads pinned to 1**, measured not assumed: one query embed takes 112ms median /
+121ms max with unbounded threads, and 104ms / 107ms at `threads=1`. A 12-layer forward pass
+over a ~15-token query is too small to parallelise, so extra threads buy nothing and cost
+synchronisation — visible mostly in the tail, which is what P100 measures. It also fixed the
+index build: `parallel=N` re-instantiates the embedder per worker, so unbounded threads meant
+6–8 workers x 16 intra-op threads with separate arenas, and the ONNX session load died with
+"bad allocation". Build throughput improved as a side effect, 82 → 51 ms/chunk.
+Guardrail routing verified against nine probe queries: Hindi questions answered (96–105ms),
+English declined `language_mismatch`, Hinglish answered, gibberish declined, injection and
+harm-seeking declined `input_safety`, an unanswerable Hindi question declined `low_confidence`.
+Phases 4, 5 and 6 landed in one bump rather than three because they are mutually dependent —
+an orchestrator cannot be verified without guardrails and a generator to orchestrate, and
+bumping to a version whose pipeline cannot run end to end would have frozen a snapshot that
+never worked. Later phases return to one bump per phase.
+**Supersedes:** V3.0
