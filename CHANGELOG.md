@@ -345,3 +345,19 @@ again, so `V5.0/` is *not* a clean snapshot of what its own changelog entry desc
 contains this entry's changes too. `V6.0/` onward is correct. Noting it because a version
 history that quietly papers over its own violations is worth less than one that doesn't.
 **Supersedes:** V5.0
+
+## V6.1 — 2026-08-21
+**Type:** Minor
+**Summary:** Corrected the Cal Sans CDN version pin — the pinned release didn't exist.
+**Files changed:**
+- `demo/index.html` — Cal Sans stylesheet URL `@fontsource/cal-sans@5.0.0` → `@5.3.0`.
+**Details:** The version was pinned to `5.0.0`, which returns 404 — that package's earliest
+published release is `5.2.1` and latest is `5.3.0`. Because a failed stylesheet link is
+silent, headings were falling through the stack to the system sans and nothing said so.
+Caught by checking `document.fonts` for what actually loaded rather than trusting
+`document.fonts.check()`, which returns true whenever *some* face can render the string.
+Verified after the fix: Cal Sans, JetBrains Mono and Noto Sans Devanagari all report
+`status: "loaded"`, and the `h1` computes to Cal Sans.
+Classified Minor: no behaviour or logic changed, only a URL that was already meant to point
+at this font.
+**Supersedes:** V6.0
