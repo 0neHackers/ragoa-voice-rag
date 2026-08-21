@@ -8,106 +8,110 @@
 
 | Requirement | Status |
 |---|---|
-| Voice → speech-to-text | Built (Sarvam streaming, batch fallback labelled). **Never run against the live API — no key.** |
+| Voice → speech-to-text | **Working and verified end to end against the live API.** Runs on batch, labelled as batch — streaming returns nothing on this account (details below). |
 | 4 chunking strategies | Done, and benchmarked against each other on recall@5 / MRR |
 | Vector retrieval | Done — FAISS in-process, 15,449 chunks, hybrid with BM25 |
 | Under 200ms | **Met. P50 99.17ms, P70 102.39ms, P100 127.53ms** — every query inside budget |
 | P50/P70/P100 across 30–50+ queries | Done, 50 real dataset queries |
 | Harness | Done — typed I/O, selective retries, per-stage error handling |
 | Guardrails | Done — 4 of them, 3 positions, every refusal structured |
-| Tests | 163, all passing |
-| Web UI | Rebuilt — boxy minimal, fluid 320px → 3840px, verified at each end |
-| GitHub repo | **Yours to do** |
+| Tests | 167, all passing |
+| Web UI | Rebuilt — boxy minimal, fluid 320px → 3840px, all four fonts + both team marks live |
+| GitHub repo | **Done** — https://github.com/0neHackers/ragoa-voice-rag (public, 14 commits) |
 | Live link | **Yours to do** |
 | 2 videos + 6 social posts | **Yours to do** |
 
 ---
 
-## 1. API keys — the only thing actually blocking the build
+## 1. Keys — both in, both tested
 
-`.env` has empty placeholders right now. Nothing else is missing.
+Your keys are in `master_repo/V7.0/.env`, which is git-ignored. I verified nothing secret
+reached the remote before pushing.
 
-```bash
-# master_repo/V5.0/.env
-SARVAM_API_KEY=...
-ANTHROPIC_API_KEY=...
+> **Rotate both after the hackathon.** They were pasted into a chat transcript, so treat them
+> as exposed regardless of how carefully the repo is handling them.
+
+**Sarvam works. Streaming doesn't, on this account.** I tested it properly and found two real
+bugs in my own client along the way — details in `README.md`, but the summary is that the
+WebSocket endpoint connects, authenticates, validates the model, accepts every audio frame,
+and returns **zero transcript frames**, across every chunk cadence and endpoint I tried. The
+batch REST endpoint transcribes the same audio perfectly on the first try.
+
+So the pipeline runs on batch, labelled `transport: "batch"` everywhere it's reported. It's a
+deviation from the plan and it's visible rather than buried. If Sarvam enables streaming on
+your account, `STT_TRANSPORT=streaming` exercises that path with no code change.
+
+Verified end to end by using Sarvam's own TTS to synthesise Hindi speech and feeding it back
+through the whole pipeline:
+
+```
+spoken     : ईमानदारी या सच्चाई की परिभाषा क्या है
+transcript : ईमानदारी या सच्चाई की परिभाषा क्या है?     (exact)
+STT 1146ms · retrieval 121.8ms · full 2430ms · all 4 guardrails passed
 ```
 
-**Please treat the Sarvam one as a real risk.** I wrote the client against the documented
-streaming WebSocket protocol, but I've never been able to run it against the live API. The
-frame parsing is deliberately tolerant — Sarvam has shipped more than one response shape
-across model versions, so it accepts several — but *tolerant* isn't *tested*. Verify it
-before you record anything:
+**The Anthropic key has no credits.** The API returns `credit balance is too low`. That
+arrives as an HTTP 400, which was taking the whole request down with it, so I made it degrade
+to extractive mode with the reason stated in the response instead. The system answers, and it
+says plainly that the answer is a retrieved passage rather than generated text.
+
+**If you want generated answers in the demo video, you need to put credits on that account.**
+Roughly $5 is far more than enough — Haiku at these token counts costs fractions of a cent per
+query. Everything else works without it; you'd just be showing extractive answers.
+
+Once credits are on, re-run this for a real end-to-end latency figure:
 
 ```bash
-cd master_repo/V5.0
-python -m stt.transcribe --mic --seconds 6 --save audio_samples/test.wav
-```
-
-You want your spoken Hindi back as text, with `via streaming` in the output. If it says
-`via batch`, the WebSocket handshake failed and it fell back — the transcript's still real,
-but check your network before blaming the code. If it errors outright, the message names the
-cause, and the frame shapes live in `stt/sarvam_client.py:_extract_transcript`.
-
-Without `ANTHROPIC_API_KEY` the system still answers, but in **extractive** mode — it hands
-back the top retrieved passage word for word, labelled as such in the UI. That's honest, but
-it's a weak demo. Set the key.
-
-Then re-run the benchmark to get a real end-to-end number:
-
-```bash
+cd master_repo/V7.0
 python -m benchmarks.latency --n 50
 ```
 
-The current full-pipeline figure is flagged `"full_pipeline_includes_llm": false` because
-generation ran extractive. **Don't quote it as end-to-end latency until you've re-run it.**
-The retrieval number (99ms P50) is real and stands on its own.
+The current full-pipeline number is flagged `"full_pipeline_includes_llm": false` for exactly
+this reason. Don't quote it as end-to-end latency until it's been re-run. The retrieval number
+(99ms P50) is real and stands on its own.
 
 ---
 
-## 2. Deployment
+## 2. Deployment — the one thing still open
 
-Full detail in **[DEPLOY.md](DEPLOY.md)**. The short version:
+Full detail in **[DEPLOY.md](DEPLOY.md)**.
 
-- **Vercel can't run the backend.** Serverless functions cap at 250 MB; the model alone is
-  240 MB and the whole payload is ~375 MB. Not a config problem — it doesn't fit.
+- **Vercel can't run the backend.** Serverless functions cap at 250 MB; the embedding model
+  alone is 240 MB and the whole payload is ~375 MB. Not a config problem — it doesn't fit.
 - **Recommended: Render only, one URL.** FastAPI serves the page and the API together, so
-  you get one link for the form and one thing to keep alive.
-- If you do want Vercel for the frontend, set `window.__API_BASE__` in `demo/config.js` to
-  the Render URL and deploy `demo/` as a static site. CORS is already open.
+  it's one link for the form and one thing to keep alive.
+- If you want Vercel for the frontend anyway, set `window.__API_BASE__` in `demo/config.js`
+  to the Render URL and deploy `demo/` as a static site. CORS is already open and the route
+  is already wired.
 
-What I need from you either way:
+What I need from you:
 
-- A **GitHub** account and repo (must be public)
-- A **Render** account, on the **starter** plan or higher — free tier's 512 MB will OOM,
-  and sleeping instances make for a bad first impression on a cold judge link
-- Both API keys entered in the Render dashboard, not in the repo
+- A **Render** account on the **starter** plan or higher. The free tier's 512 MB will OOM,
+  and sleeping instances make a terrible first impression on a cold judge link.
+- Both keys pasted into the Render dashboard (never the repo).
+- Render's root directory set to **`master_repo/V7.0`** — the Dockerfile lives one level
+  down from the repo root.
 
 Budget **15–20 minutes** for the first build. The Dockerfile bakes the index into the image
-on purpose, so the container is ready the moment it boots.
+so the container is ready the moment it boots rather than serving 503s while it embeds.
 
 ---
 
-## 3. Fonts — one optional file
+## 3. Fonts and branding — done
 
-Three of the four faces load from CDNs automatically. **Disket Mono doesn't exist on any
-package CDN** — Fontfabric releases it directly and doesn't redistribute through npm or
-Google Fonts.
+All four faces load and are confirmed applied in the browser:
 
-If you have it, drop these two files in and they'll be picked up on the next reload:
+- **Cal Sans** — display headings (jsDelivr)
+- **JetBrains Mono** — body, data, numbers (Google Fonts)
+- **Disket Mono** — labels and metrics. Converted your TTFs to woff2, 82KB → 18KB each.
+- **Noto Sans Devanagari** — every Hindi passage and answer. Not optional: neither JetBrains
+  Mono nor Cal Sans has Devanagari glyphs, so without it the actual content falls back to
+  whatever the OS supplies.
 
-```
-master_repo/V5.0/demo/fonts/DisketMono-Regular.woff2
-master_repo/V5.0/demo/fonts/DisketMono-Bold.woff2
-```
-
-Nothing breaks without them — the stack falls back to Space Mono, which has the same
-squared-off terminal character. See `demo/fonts/README.md` for converting from `.ttf`.
-
-I also added **Noto Sans Devanagari**, which you didn't ask for but the app can't do
-without: neither JetBrains Mono nor Cal Sans has Devanagari glyphs, and every passage and
-answer in this system is Hindi. Without it the actual content renders in whatever the OS
-falls back to.
+Both SVGs are in the footer — the `0neHackers` wordmark and the `made by` lockup — served
+from `/assets`, rendering at their natural aspect ratios, with no page overflow down to
+320px. The made-by mark ships as flat `#6B6B75`, which sits too close to the panel colour in
+dark mode, so it's lifted optically with a CSS filter rather than by editing your file.
 
 ---
 
@@ -160,19 +164,21 @@ verified before you click.
 
 ## Everything I need from you, in one list
 
-1. `SARVAM_API_KEY` — and please test the voice path with it before recording
-2. `ANTHROPIC_API_KEY` — then re-run the benchmark for a real end-to-end number
-3. GitHub account + a public repo to push to
-4. Render account, starter plan or above
-5. Both keys pasted into the Render dashboard
-6. *(Optional)* the two Disket Mono `.woff2` files
-7. Twitter/X and Instagram handles for all three of you
-8. The two videos recorded, with mic audio verified
-9. Six posts published, all tagged `#RAGInGoa`, accounts public
-10. Confirmation the participation form is already in
+Everything I can do without you is done. What's left:
 
-Items 1 and 2 are the only ones that block me. Give me those and I can verify the voice path
-end to end and produce a real full-pipeline latency figure. The rest need your accounts.
+1. **A Render account**, starter plan or above, with both keys set in its dashboard and the
+   root directory set to `master_repo/V7.0`. This is the only thing standing between you and
+   a live link.
+2. **Credits on the Anthropic account** — only if you want *generated* rather than extractive
+   answers in the demo. ~$5 is plenty. Everything works without it.
+3. **The two videos**, with mic audio verified before the real take.
+4. **Six posts** — three people, two platforms each, every one tagged `#RAGInGoa`, all
+   accounts public.
+5. **The submission form**, filled completely and submitted once.
+6. **Confirmation the participation form is already in** — it's a separate form.
+7. **Rotate both API keys** after judging closes.
+
+Nothing here is blocked on me. Send me a Render URL and I'll verify it cold.
 
 ---
 

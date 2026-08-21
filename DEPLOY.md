@@ -41,7 +41,7 @@ one thing that can break, done.
 **2.** On Render: **New → Blueprint**, point it at your repo. `render.yaml` is already in
 `V5.0/` and configured.
 
-**3. Set the root directory to `master_repo/V5.0`.** Render looks for the Dockerfile
+**3. Set the root directory to `master_repo/V7.0`.** Render looks for the Dockerfile
 relative to the repo root, and yours lives one level down. Either set it in the dashboard
 or move `V5.0/`'s contents to the repo root before pushing.
 
@@ -78,7 +78,7 @@ window.__API_BASE__ = 'https://voice-rag-0nehackers.onrender.com';
 **3.** Deploy just the `demo/` folder to Vercel:
 
 ```bash
-cd master_repo/V5.0/demo
+cd master_repo/V7.0/demo
 npx vercel --prod
 ```
 
