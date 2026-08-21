@@ -1,0 +1,21 @@
+# Secrets — never commit
+.env
+*/.env
+**/.env
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+*/.venv/
+**/.venv/
+*.egg-info/
+
+# Caches / build artifacts
+.pytest_cache/
+**/.cache/
+**/hf_cache/
+**/model_cache/
+**/*.faiss
+**/*.index
+**/corpus_cache/
