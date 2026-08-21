@@ -1,0 +1,11 @@
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.git/
+.env
+index_store/
+index_store_dev/
+benchmarks/results_*.json
+build_full.log
+audio_samples/*.wav

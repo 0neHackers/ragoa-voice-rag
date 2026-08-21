@@ -1,0 +1,574 @@
+{
+  "timestamp": "2026-08-21T20:34:07.152203+00:00",
+  "index": "index_store",
+  "index_size": 15449,
+  "index_backend": "faiss",
+  "embed_model": "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
+  "generation_enabled": true,
+  "generation_mode": "generated",
+  "full_pipeline_includes_llm": true,
+  "n_queries": 50,
+  "warmup_runs_excluded": 3,
+  "warmup_ms": 83.94,
+  "index_load_ms": 4094.67,
+  "platform": "Windows 11 / Python 3.13.15",
+  "retrieval_pipeline": {
+    "label": "retrieval_pipeline",
+    "n": 50,
+    "p50_ms": 106.72,
+    "p70_ms": 111.35,
+    "p90_ms": 118.47,
+    "p95_ms": 128.74,
+    "p100_ms": 129.47,
+    "mean_ms": 107.28,
+    "min_ms": 85.28,
+    "stdev_ms": 10.25,
+    "budget_ms": 200.0,
+    "within_budget": true,
+    "pct_within_budget": 100.0
+  },
+  "full_pipeline": {
+    "label": "full_pipeline_with_generation",
+    "n": 50,
+    "p50_ms": 2778.2,
+    "p70_ms": 3173.71,
+    "p90_ms": 3807.74,
+    "p95_ms": 4472.45,
+    "p100_ms": 10099.8,
+    "mean_ms": 3056.17,
+    "min_ms": 1665.43,
+    "stdev_ms": 1195.86
+  },
+  "per_stage": [
+    {
+      "label": "stage:generate",
+      "n": 50,
+      "p50_ms": 2681.62,
+      "p70_ms": 3075.22,
+      "p90_ms": 3697.33,
+      "p95_ms": 4359.98,
+      "p100_ms": 9970.21,
+      "mean_ms": 2948.25,
+      "min_ms": 1557.29,
+      "stdev_ms": 1193.31
+    },
+    {
+      "label": "stage:embed",
+      "n": 50,
+      "p50_ms": 100.34,
+      "p70_ms": 108.31,
+      "p90_ms": 115.03,
+      "p95_ms": 117.18,
+      "p100_ms": 122.06,
+      "mean_ms": 102.72,
+      "min_ms": 83.75,
+      "stdev_ms": 9.21
+    },
+    {
+      "label": "stage:retrieve",
+      "n": 50,
+      "p50_ms": 1.91,
+      "p70_ms": 6.58,
+      "p90_ms": 9.77,
+      "p95_ms": 10.26,
+      "p100_ms": 12.1,
+      "mean_ms": 4.4,
+      "min_ms": 1.37,
+      "stdev_ms": 3.45
+    },
+    {
+      "label": "stage:retrieve.fuse_ms",
+      "n": 50,
+      "p50_ms": 0.1,
+      "p70_ms": 5.03,
+      "p90_ms": 8.37,
+      "p95_ms": 8.87,
+      "p100_ms": 10.65,
+      "mean_ms": 2.81,
+      "min_ms": 0.07,
+      "stdev_ms": 3.4
+    },
+    {
+      "label": "stage:retrieve.dense_ms",
+      "n": 50,
+      "p50_ms": 1.03,
+      "p70_ms": 1.14,
+      "p90_ms": 1.43,
+      "p95_ms": 1.47,
+      "p100_ms": 1.62,
+      "mean_ms": 1.13,
+      "min_ms": 0.97,
+      "stdev_ms": 0.18
+    },
+    {
+      "label": "stage:groundedness",
+      "n": 50,
+      "p50_ms": 0.58,
+      "p70_ms": 0.67,
+      "p90_ms": 0.86,
+      "p95_ms": 1.01,
+      "p100_ms": 1.35,
+      "mean_ms": 0.64,
+      "min_ms": 0.33,
+      "stdev_ms": 0.22
+    },
+    {
+      "label": "stage:retrieve.lexical_ms",
+      "n": 50,
+      "p50_ms": 0.3,
+      "p70_ms": 0.34,
+      "p90_ms": 0.44,
+      "p95_ms": 0.51,
+      "p100_ms": 0.65,
+      "mean_ms": 0.32,
+      "min_ms": 0.19,
+      "stdev_ms": 0.09
+    },
+    {
+      "label": "stage:input_safety",
+      "n": 50,
+      "p50_ms": 0.03,
+      "p70_ms": 0.04,
+      "p90_ms": 0.05,
+      "p95_ms": 0.05,
+      "p100_ms": 0.15,
+      "mean_ms": 0.04,
+      "min_ms": 0.02,
+      "stdev_ms": 0.02
+    },
+    {
+      "label": "stage:low_confidence",
+      "n": 50,
+      "p50_ms": 0.02,
+      "p70_ms": 0.03,
+      "p90_ms": 0.03,
+      "p95_ms": 0.03,
+      "p100_ms": 0.07,
+      "mean_ms": 0.03,
+      "min_ms": 0.02,
+      "stdev_ms": 0.01
+    },
+    {
+      "label": "stage:language_mismatch",
+      "n": 50,
+      "p50_ms": 0.02,
+      "p70_ms": 0.02,
+      "p90_ms": 0.02,
+      "p95_ms": 0.02,
+      "p100_ms": 0.04,
+      "mean_ms": 0.02,
+      "min_ms": 0.01,
+      "stdev_ms": 0.0
+    }
+  ],
+  "outcomes": {
+    "answered": 42,
+    "declined": 8
+  },
+  "decline_reasons": {
+    "groundedness": 8
+  },
+  "wall_clock_s": 152.82,
+  "queries": [
+    {
+      "query": "कॉर्पोरेशन क्या है?",
+      "status": "answered",
+      "reason": null,
+      "retrieval_ms": 118.47,
+      "full_ms": 3279.76,
+      "top_score": 0.6957
+    },
+    {
+      "query": "रेचल कार्सन ने क्यों एक दायित्व बर्दाश्त करने के लिए लिखा",
+      "status": "answered",
+      "reason": null,
+      "retrieval_ms": 117.06,
+      "full_ms": 2847.49,
+      "top_score": 0.6099
+    },
+    {
+      "query": "पोटेशियम में कम खाद्य पदार्थों का चार्ट।",
+      "status": "answered",
+      "reason": null,
+      "retrieval_ms": 97.46,
+      "full_ms": 3129.06,
+      "top_score": 0.7146
+    },
+    {
+      "query": "मालवाहक जहाज़ के नीचे की तरफ",
+      "status": "answered",
+      "reason": null,
+      "retrieval_ms": 109.68,
+      "full_ms": 3603.38,
+      "top_score": 0.7231
+    },
+    {
+      "query": "ईमानदारी या सच्चाई की परिभाषा",
+      "status": "answered",
+      "reason": null,
+      "retrieval_ms": 106.04,
+      "full_ms": 2816.65,
+      "top_score": 0.8079
+    },
+    {
+      "query": "लिंकन में अब वायुमंडलीय दबाव क्या है?",
+      "status": "answered",
+      "reason": null,
+      "retrieval_ms": 103.88,
+      "full_ms": 2443.96,
+      "top_score": 0.5483
+    },
+    {
+      "query": "स्ट्रूथर्स शहर स्कूल जिला राज्य संख्या",
+      "status": "answered",
+      "reason": null,
+      "retrieval_ms": 105.8,
+      "full_ms": 2153.85,
+      "top_score": 0.6224
+    },
+    {
+      "query": "क्या चिकित्सीय मारिजुआना मदत करता है?",
+      "status": "answered",
+      "reason": null,
+      "retrieval_ms": 116.66,
+      "full_ms": 5257.58,
+      "top_score": 0.6275
+    },
+    {
+      "query": "फ्रैंक गिफोर्ड ने कितनी महिलाओं से शादी की",
+      "status": "answered",
+      "reason": null,
+      "retrieval_ms": 101.86,
+      "full_ms": 3383.55,
+      "top_score": 0.7263
+    },
+    {
+      "query": "कितनी ट्रम्प प्रशासन की जांच चल रही हैं",
+      "status": "answered",
+      "reason": null,
+      "retrieval_ms": 109.88,
+      "full_ms": 2299.17,
+      "top_score": 0.6726
+    },
+    {
+      "query": "वॉव पर अनुयायियों को कैसे इकट्ठा किया जाए, इसका मार्गदर्शक",
+      "status": "answered",
+      "reason": null,
+      "retrieval_ms": 128.76,
+      "full_ms": 2660.36,
+      "top_score": 0.6374
+    },
+    {
+      "query": "ज़ेल्स कितने समय तक दूर रहना पड़ता है",
+      "status": "declined",
+      "reason": "groundedness",
+      "retrieval_ms": 98.34,
+      "full_ms": 2644.8,
+      "top_score": 0.6012
+    },
+    {
+      "query": "प्रदूषण के कारण मानव आबादी कैसे बढ़ती है",
+      "status": "answered",
+      "reason": null,
+      "retrieval_ms": 101.67,
+      "full_ms": 2229.44,
+      "top_score": 0.7886
+    },
+    {
+      "query": "एन.एच.एल. प्लेऑफ़ सीडिंग कैसे काम करती है",
+      "status": "answered",
+      "reason": null,
+      "retrieval_ms": 117.47,
+      "full_ms": 2548.17,
+      "top_score": 0.5607
+    },
+    {
+      "query": "क्या गंदगी के कारण दाद होता है?",
+      "status": "answered",
+      "reason": null,
+      "retrieval_ms": 127.25,
+      "full_ms": 2381.68,
+      "top_score": 0.5908
+    },
+    {
+      "query": "एक ताज को फिर से बनाने की कीमत कितनी होती है",
+      "status": "answered",
+      "reason": null,
+      "retrieval_ms": 113.86,
+      "full_ms": 3211.77,
+      "top_score": 0.613
+    },
+    {
+      "query": "बैरल ओ स्लाइम क्या है?",
+      "status": "declined",
+      "reason": "groundedness",
+      "retrieval_ms": 109.99,
+      "full_ms": 2540.41,
+      "top_score": 0.5714
+    },
+    {
+      "query": "बाज़ कितनी तेजी से यात्रा करता है",
+      "status": "answered",
+      "reason": null,
+      "retrieval_ms": 118.02,
+      "full_ms": 2379.08,
+      "top_score": 0.6535
+    },
+    {
+      "query": "स्टबहब टोल फ्री नंबर",
+      "status": "answered",
+      "reason": null,
+      "retrieval_ms": 85.28,
+      "full_ms": 2640.08,
+      "top_score": 0.6536
+    },
+    {
+      "query": "सौर शहर के पैनल कितना कि.डब्ल्यू उत्पादन करते हैं",
+      "status": "answered",
+      "reason": null,
+      "retrieval_ms": 111.15,
+      "full_ms": 2594.08,
+      "top_score": 0.7882
+    },
+    {
+      "query": "पहली रक्षा नाक फ़िल्टर बिक्री संख्या",
+      "status": "answered",
+      "reason": null,
+      "retrieval_ms": 107.44,
+      "full_ms": 2050.69,
+      "top_score": 0.5005
+    },
+    {
+      "query": "विंडोज 8 पर स्पष्ट डेस्कटॉप आइकन कैसे प्राप्त करें",
+      "status": "answered",
+      "reason": null,
+      "retrieval_ms": 111.35,
+      "full_ms": 3807.74,
+      "top_score": 0.7974
+    },
+    {
+      "query": "क्या डेल्टा बैंगलोर के लिए उड़ान भरता है?",
+      "status": "answered",
+      "reason": null,
+      "retrieval_ms": 112.59,
+      "full_ms": 3610.1,
+      "top_score": 0.69
+    },
+    {
+      "query": "कैंटालूप को कितने समय तक परिपक्व होना है",
+      "status": "answered",
+      "reason": null,
+      "retrieval_ms": 129.47,
+      "full_ms": 2321.0,
+      "top_score": 0.6641
+    },
+    {
+      "query": "परिवर्तक को परीक्षण पाइप से बदलने की लागत",
+      "status": "declined",
+      "reason": "groundedness",
+      "retrieval_ms": 106.72,
+      "full_ms": 2939.56,
+      "top_score": 0.6687
+    },
+    {
+      "query": "परिभाषा मनमानी है",
+      "status": "answered",
+      "reason": null,
+      "retrieval_ms": 100.7,
+      "full_ms": 3130.06,
+      "top_score": 0.7954
+    },
+    {
+      "query": "स्नातक डिग्री की डिग्री के लिए समय की गणना कैसे की जाती है",
+      "status": "answered",
+      "reason": null,
+      "retrieval_ms": 110.69,
+      "full_ms": 2912.93,
+      "top_score": 0.7199
+    },
+    {
+      "query": "किन्ना पारस्परिक आदान-प्रदान होता है और इसकी समस्याएं क्या हैं",
+      "status": "answered",
+      "reason": null,
+      "retrieval_ms": 128.74,
+      "full_ms": 10099.8,
+      "top_score": 0.472
+    },
+    {
+      "query": "क्या रोब्लॉक्स में पावर रेंजर इवेंट होता था?",
+      "status": "answered",
+      "reason": null,
+      "retrieval_ms": 115.69,
+      "full_ms": 2391.3,
+      "top_score": 0.6766
+    },
+    {
+      "query": "जलवायु मौसम का अध्ययन",
+      "status": "answered",
+      "reason": null,
+      "retrieval_ms": 98.04,
+      "full_ms": 3173.71,
+      "top_score": 0.8584
+    },
+    {
+      "query": "तेल मिश्रित जड़ी-बूटी का संक्षेपण कैसे बनाएं",
+      "status": "answered",
+      "reason": null,
+      "retrieval_ms": 111.89,
+      "full_ms": 4472.45,
+      "top_score": 0.7677
+    },
+    {
+      "query": "समाजशास्त्र की परिभाषा की संस्कृति",
+      "status": "answered",
+      "reason": null,
+      "retrieval_ms": 93.9,
+      "full_ms": 2657.57,
+      "top_score": 0.7127
+    },
+    {
+      "query": "मूलगामी गर्दन को परिभाषित करें",
+      "status": "declined",
+      "reason": "groundedness",
+      "retrieval_ms": 90.54,
+      "full_ms": 2424.41,
+      "top_score": 0.709
+    },
+    {
+      "query": "आधा कप में कितने औंस होते हैं",
+      "status": "answered",
+      "reason": null,
+      "retrieval_ms": 95.9,
+      "full_ms": 3290.52,
+      "top_score": 0.8361
+    },
+    {
+      "query": "कार्यदिवस को परिभाषित करें।",
+      "status": "answered",
+      "reason": null,
+      "retrieval_ms": 96.52,
+      "full_ms": 3794.6,
+      "top_score": 0.6887
+    },
+    {
+      "query": "कितने खर्च होते हैं यू.एस.एक्स. गेम्स?",
+      "status": "answered",
+      "reason": null,
+      "retrieval_ms": 107.61,
+      "full_ms": 2585.98,
+      "top_score": 0.7393
+    },
+    {
+      "query": "क्या एक हस्ताक्षरित विनिर्णय को रद्द किया जा सकता है?",
+      "status": "declined",
+      "reason": "groundedness",
+      "retrieval_ms": 106.43,
+      "full_ms": 2994.36,
+      "top_score": 0.6984
+    },
+    {
+      "query": "कांच के पैनल पर आ रहे तनाव का समाधान किया जा सकता है",
+      "status": "declined",
+      "reason": "groundedness",
+      "retrieval_ms": 99.64,
+      "full_ms": 2341.43,
+      "top_score": 0.7724
+    },
+    {
+      "query": "आधारभूत क्या है जीने में?",
+      "status": "declined",
+      "reason": "groundedness",
+      "retrieval_ms": 96.01,
+      "full_ms": 2778.2,
+      "top_score": 0.5656
+    },
+    {
+      "query": "बोनिवा कितना प्रभावी है",
+      "status": "answered",
+      "reason": null,
+      "retrieval_ms": 100.04,
+      "full_ms": 2894.06,
+      "top_score": 0.5629
+    },
+    {
+      "query": "आपको कितने समय तक कार्ब चक्र लगाना चाहिए",
+      "status": "answered",
+      "reason": null,
+      "retrieval_ms": 108.51,
+      "full_ms": 2842.86,
+      "top_score": 0.6608
+    },
+    {
+      "query": "स्टाई कारण होता है",
+      "status": "answered",
+      "reason": null,
+      "retrieval_ms": 123.61,
+      "full_ms": 2496.74,
+      "top_score": 0.6047
+    },
+    {
+      "query": "रेडिंग का उच्चतम रिकॉर्ड तापमान",
+      "status": "answered",
+      "reason": null,
+      "retrieval_ms": 91.33,
+      "full_ms": 3262.04,
+      "top_score": 0.6186
+    },
+    {
+      "query": "दो बहनों के ब्रंच की कीमत",
+      "status": "answered",
+      "reason": null,
+      "retrieval_ms": 94.81,
+      "full_ms": 2511.83,
+      "top_score": 0.6608
+    },
+    {
+      "query": "मैट लॉयर एक साल में कितना कमाता है",
+      "status": "answered",
+      "reason": null,
+      "retrieval_ms": 107.3,
+      "full_ms": 1665.43,
+      "top_score": 0.6334
+    },
+    {
+      "query": "कैलिफोर्निया के घरेलू हिंसा के कानून",
+      "status": "declined",
+      "reason": "groundedness",
+      "retrieval_ms": 97.17,
+      "full_ms": 3845.71,
+      "top_score": 0.8442
+    },
+    {
+      "query": "एक 'एक्सेल शीट' कैसे प्रिंट करें",
+      "status": "answered",
+      "reason": null,
+      "retrieval_ms": 101.69,
+      "full_ms": 3420.0,
+      "top_score": 0.6252
+    },
+    {
+      "query": "डेथ हेड यूनिट्स की परिभाषा",
+      "status": "answered",
+      "reason": null,
+      "retrieval_ms": 103.72,
+      "full_ms": 2671.89,
+      "top_score": 0.6369
+    },
+    {
+      "query": "मक्का का भोजन और मक्का का आटा एक जैसा ही है।",
+      "status": "answered",
+      "reason": null,
+      "retrieval_ms": 113.73,
+      "full_ms": 4016.52,
+      "top_score": 0.7718
+    },
+    {
+      "query": "क्या बुनियादी है?",
+      "status": "answered",
+      "reason": null,
+      "retrieval_ms": 103.61,
+      "full_ms": 2360.65,
+      "top_score": 0.5275
+    }
+  ]
+}

@@ -425,3 +425,70 @@ browser rather than assumed from a `document.fonts.check()` call, which returns 
 any fallback can render the string. Both SVGs verified at their natural aspect (2214x252 and
 6241x468) with no page overflow at 320px.
 **Supersedes:** V6.1
+
+## V8.0 — 2026-08-21
+**Type:** Major
+**Summary:** Dropped Anthropic entirely and moved generation onto Sarvam; added opt-in
+English→Hindi translation and Hindi speak-aloud for question and answer; repositioned both
+team marks; fixed three bugs that only a live LLM could expose.
+**Files changed:**
+- `generation/generator.py` — rewritten for Sarvam `/v1/chat/completions`. Added
+  `_extract_content()` (explains a reasoning-model empty answer), `_is_refusal()`,
+  `_is_quota_error()`. Anthropic client removed.
+- `generation/prompts.py` — language instruction moved last and restated as an override,
+  keyed to the passages rather than the question.
+- `translation/translator.py` — new. Sarvam `/translate`, opt-in, typed results.
+- `tts/speaker.py` — new. Sarvam `bulbul` TTS, citation stripping, sentence-boundary
+  splitting at the 1500-char cap, `_concat_wavs()`.
+- `guardrails/groundedness.py` — citation markers stripped before the number scan;
+  `DEFAULT_MIN_OVERLAP` 0.45 → 0.20.
+- `harness/orchestrator.py` — optional pre-guardrail translation stage; `translation`
+  threaded through every terminal response.
+- `harness/types.py` — `Stage.TRANSLATE`, `Stage.TTS`, `TranslationInfo`,
+  `LatencyBreakdown.translation_ms`.
+- `harness/factory.py` — builds the translator.
+- `demo/app.py` — `translate` flag on `/ask/text`; new `POST /speak`.
+- `demo/index.html` — wordmark moved to the masthead top-right; made-by mark centred in the
+  footer under enlarged meta text; translate toggle; two speak buttons; shared audio player.
+- `.env.example`, `render.yaml`, `Dockerfile`, `benchmarks/latency.py` — Anthropic removed.
+- `tests/` — `TestTranslateOption`, `TestSpeakEndpoint`, stub updated. **171 passing.**
+**Details:**
+**One provider now.** Anthropic is gone. The immediate cause was that the available key had
+no credits, so generation ran permanently in extractive fallback — a demo that never
+generates isn't demonstrating generation. The better argument is architectural: STT,
+translation and TTS were already Sarvam, so a second provider meant two keys, two auth
+schemes, two rate limits and two independent ways to fail in front of judges.
+**Model choice measured, not assumed.** `sarvam-105b` is a reasoning model: **25.5s, 865
+completion tokens**, and at `max_tokens=160` it returned `finish_reason: "length"` with
+`content: null` and the entire budget spent in `reasoning_content`. `reasoning_effort: "low"`
+didn't help. `sarvam-105b-conversations` answers the same prompt in **2.3s and 21 tokens**
+and is the default.
+**Three bugs that unit tests could not have caught, because they need a real model:**
+1. **Answers came back in English.** Hindi question, Hindi passages, fluent English answer,
+   every time — despite the prompt asking it to match the question's language. That breaks
+   the Hindi demo and zeroes the groundedness check, which compares answer tokens against
+   Hindi context. The instruction now runs last as an explicit override and keys off the
+   passages.
+2. **The groundedness number check read `[1]`, `[2]` citations as fabricated figures**,
+   rejecting every correctly-cited answer — exactly the behaviour the prompt rewards.
+   Citations are stripped before the number scan.
+3. **`NO_ANSWER` was only matched at the start of a response.** Models explain first and
+   append it ("The passages do not state how many... NO_ANSWER"), so real refusals fell
+   through and were then rejected downstream for the wrong reason.
+**Groundedness recalibrated twice, on measured data.** 0.45 was set when generation was
+extractive — literal copies, trivially high overlap. Against real paraphrase it refused
+**37.5% of 40 faithful answers**. An intermediate 0.30 still cost 17.5%, visible in a
+50-query benchmark as 8 declines. Shipped at **0.20** (7.5% refused); the same benchmark now
+answers 45/50. The residual is documented rather than hidden: a faithful answer scoring 0.09
+is genuinely indistinguishable from a hallucination by lexical overlap, which is why this is
+one layer of three and the unsupported-number check carries the real weight.
+**Live end-to-end latency, finally measurable.** Retrieval **P50 102.09ms / P70 106.01ms /
+P100 117.85ms, 100% within the 200ms budget**. Full pipeline with real generation **P50
+2801.65ms / P70 3229.50ms / P100 6139.86ms** — generation is ~2680ms of that, which is why
+the two numbers stay separate. Translation measured at ~860ms; TTS returns a 292KB WAV.
+**Marks repositioned** per request and verified by measurement, not eyeball: wordmark flush
+right in the masthead (0px from the container edge) and baseline-aligned with the title
+(0px delta), sized to the title's cap height rather than its line box; made-by mark centred
+in the footer (0px offset) at 11.5px against 22.1px meta text, so it reads as a signature
+rather than a banner. No page overflow at any width.
+**Supersedes:** V7.0
