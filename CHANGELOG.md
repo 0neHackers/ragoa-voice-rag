@@ -556,3 +556,33 @@ reserves descender space) against a tightly-cropped SVG (which doesn't), sitting
 visually low. Centring puts their visual masses level — measured, vertical centres now match
 exactly at 0px delta, right edge still flush at 0px.
 **Supersedes:** V8.0
+
+## V8.2 — 2026-08-22
+**Type:** Major
+**Summary:** Hugging Face Spaces deployment target; Dockerfile hardened to run non-root;
+`verify_task.py` added to check every task requirement against the built artefacts.
+**Files changed:**
+- `Dockerfile` — runs as UID 1000 instead of root; caches moved to `/home/app`; default
+  port 7860; health check reads `$PORT`.
+- `SPACE_README.md` — new. HF Space manifest (`sdk: docker`, `app_port: 7860`).
+- `verify_task.py` — new. 17 checks against the docs' requirements. **17/17 passing.**
+- `render.yaml` (repo root) — plan corrected, see Details.
+**Details:**
+**Render's `starter` plan is 512MB — the same as free — so the plan named in the blueprint
+and the docs was wrong.** Measured the running app at **687MB after load and 743MB under
+query** (psutil RSS, index + ONNX session + BM25 + FastAPI). Render would need `standard`
+at $25/mo. That was my error: I had asserted "starter is enough" repeatedly without ever
+measuring it.
+Hugging Face Spaces' free tier gives 16GB, so it's both free and roomier than the paid
+Render tier, and the model and dataset already live on HF. Same Dockerfile.
+**Dockerfile now runs as a non-root user.** Good practice generally, and a hard requirement
+on Spaces, which runs every container as UID 1000 — a root-owned `/app` there leaves the app
+unable to write its caches and it dies on boot. `HF_HOME` and `FASTEMBED_CACHE_DIR` moved
+under `/home/app` so they stay writable and survive a platform mounting over `/app`.
+`verify_task.py` re-reads the requirements from `docs/` and checks each against the actual
+artefacts rather than the prose — benchmark JSON for latency claims, the filesystem for
+strategy and guardrail counts, git for the secrets check, and a constructed
+`PipelineResponse.declined()` for the structured-refusal claim. One check initially failed
+because it grepped a docstring phrase instead of testing behaviour; rewritten to build a
+decline and assert its shape.
+**Supersedes:** V8.1
