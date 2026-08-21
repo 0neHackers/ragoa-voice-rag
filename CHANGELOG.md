@@ -95,3 +95,52 @@ strategy that meaningfully re-segments this corpus.
 ground-truth answer labelling, and boosting on it would leak the answer key into retrieval and
 inflate every benchmark number this project reports.
 **Supersedes:** V1.0
+
+## V3.0 — 2026-08-21
+**Type:** Major
+**Summary:** Phase 3 — in-process hybrid retrieval: exact dense vector search fused with a
+hand-rolled inverted-index BM25 via reciprocal rank fusion.
+**Files changed:**
+- `retrieval/vector_index.py` — new. `VectorIndex` over `faiss.IndexFlatIP` with `_NumpyFlatIP`,
+  an exact fallback implementing identical math; `centroid()` for the off-topic guardrail;
+  `save()`/`load()` persistence.
+- `retrieval/lexical.py` — new. `LexicalIndex`: Okapi BM25 over a hand-built inverted index,
+  Unicode-aware `tokenize()`, bilingual `STOPWORDS`.
+- `retrieval/retriever.py` — new. `Retriever.retrieve()`, `_rrf()` fusion, `_materialise()`,
+  `RetrievalConfig`, per-stage timings in `last_timings`.
+- `retrieval/build_index.py` — new. Build CLI with `dedupe_chunks()` and build statistics.
+- `retrieval/embedder.py` — `embed_texts()` gains build-time process parallelism;
+  `embed_query()` pinned to `parallel=0`; `build_parallelism` capped at 8.
+- `tests/test_retrieval.py` — new. 33 tests. Suite now 83, all passing.
+- `.gitattributes` — new, normalises line endings.
+**Details:** `IndexFlatIP` (exact) rather than an ANN index: at ~20k vectors an exact search is
+a single matmul at 0.3–0.5ms, so ANN buys no measurable time while costing recall — and that
+recall loss would move the score distribution the confidence guardrail thresholds against,
+making the guardrail a function of the index's approximation error.
+RRF rather than a weighted score blend, because cosine is bounded [-1,1] and BM25 is unbounded
+and corpus-dependent, so any `alpha*dense + (1-alpha)*bm25` needs per-corpus renormalisation.
+The tradeoff is that fused scores have no absolute meaning, so `ScoredChunk.dense_score` is
+kept separately and the confidence gate thresholds on raw cosine only. Chunks surfaced by BM25
+alone fall outside the dense candidate list and so have no dense score; `_materialise()` now
+computes it with a single dot product rather than leaving `None`, which would have silently
+excluded exactly those chunks from the check that decides whether we may answer.
+**BM25 was rewritten rather than taken from `rank_bm25`.** `BM25Okapi.get_scores` evaluates
+`[doc.get(term, 0) for doc in self.doc_freqs]` — a Python-level pass over every document per
+query term — measured at 3.25ms/query on 3k chunks and scaling linearly, which would have cost
+~20ms+ at full corpus size. The inverted index touches only documents containing a query term:
+**0.12ms/query, a 27x improvement.** The IDF form also differs deliberately —
+`log(1 + (N-df+0.5)/(df+0.5))` instead of the textbook `log((N-df+0.5)/(df+0.5))`, which is
+zero for a term in one of two documents and *negative* for terms in more than half the corpus,
+letting a common word push documents down the ranking.
+Measured end-to-end retrieval on 3039 real Hindi chunks: **124–136ms total** — query embed
+110–130ms, dense search 0.3–0.5ms, BM25 6–13ms (now 0.12ms), fusion 0.1ms. Correct passages
+retrieved for the sampled queries. Comfortably inside the 200ms bar, with embedding as the
+dominant term exactly as D8 predicted.
+Build-time embedding now fans across worker processes: 294ms/chunk single-process vs 82ms at
+parallel=8 (3.6x), taking a 15k-chunk build from ~74 minutes to ~20. Parallelism is capped at
+8 because each worker loads its own ~250MB ONNX session — an unbounded `cpu_count - 2` spawned
+14 workers and died with a bad allocation. The query path is pinned to `parallel=0`, where
+process spawn would be pure overhead.
+Fixed: a literal NUL byte in the BM25 empty-document placeholder made `lexical.py` unimportable
+("source code string cannot contain null bytes").
+**Supersedes:** V2.0

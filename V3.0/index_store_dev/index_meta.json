@@ -1,0 +1,5 @@
+{
+  "dim": 384,
+  "size": 3039,
+  "backend": "faiss"
+}
