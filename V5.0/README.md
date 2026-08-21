@@ -27,16 +27,43 @@ response with a machine-readable reason.
 
 ## Results at a glance
 
+Measured over **50 real MSMARCO-XI queries** against the 15,449-chunk index
+(`benchmarks/results_latest.json`):
+
+| Retrieval pipeline — **the number held to the <200ms bar** | |
+|---|---|
+| **P50** | **99.17 ms** |
+| **P70** | **102.39 ms** |
+| **P100** | **127.53 ms** |
+| mean / min / stdev | 99.05 / 84.40 / 7.93 ms |
+| within 200ms budget | **100% of queries** |
+| outcomes | 50/50 answered, no false refusals |
+
+Where the time goes — embedding is the floor, everything else is rounding error:
+
+| stage | P50 | P100 |
+|---|---|---|
+| query embed | 95.44 ms | 120.56 ms |
+| dense search (FAISS) | 1.03 ms | 1.73 ms |
+| BM25 | 0.29 ms | 0.56 ms |
+| RRF fusion | 0.09 ms | 5.59 ms |
+| all 3 guardrails | < 0.10 ms | < 0.11 ms |
+
 | | |
 |---|---|
-| **Retrieval pipeline** (the <200ms target) | see `benchmarks/results_latest.json` |
-| **Full pipeline** (incl. generation) | reported separately — see below |
 | Corpus | 15,449 unique chunks from 1,500 MSMARCO-XI Hindi examples (`validation` split) |
 | Index | FAISS `IndexFlatIP`, in-process, exact |
-| Embeddings | `paraphrase-multilingual-MiniLM-L12-v2`, 384-dim, ONNX/CPU |
+| Embeddings | `paraphrase-multilingual-MiniLM-L12-v2`, 384-dim, ONNX/CPU, `threads=1` |
 | Chunking strategies | 4 implemented, compared on recall@5 and MRR |
 | Guardrails | 4, at 3 pipeline positions |
-| Tests | 147 |
+| Tests | 163 |
+
+> **The full-pipeline number is not quoted above, deliberately.** The run that produced
+> these figures had no `ANTHROPIC_API_KEY`, so generation fell back to extractive mode — a
+> string slice — and "full pipeline" collapsed onto retrieval at 99.05ms. Reporting that as
+> end-to-end answer latency would be false, so the benchmark detects the case and marks the
+> result `"full_pipeline_includes_llm": false`. Set the key and re-run
+> `python -m benchmarks.latency --n 50` for a real end-to-end figure.
 
 > **Which number is held to 200ms, and why.** Two latencies are reported separately and
 > neither is hidden. **Retrieval-pipeline latency** — guardrails, query embedding, dense +
@@ -292,7 +319,7 @@ V{X.Y}/
 ├── harness/       orchestrator, typed I/O, retry policy, assembly factory
 ├── benchmarks/    latency, chunking comparison, threshold calibration
 ├── demo/          FastAPI app + browser UI + CLI
-└── tests/         147 tests
+└── tests/         163 tests
 ```
 
 ## Versioning

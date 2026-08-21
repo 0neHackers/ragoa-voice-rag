@@ -24,3 +24,6 @@ __pycache__/
 **/index_store/
 **/index_store_dev/
 **/build_full.log
+
+# Local dev server log
+**/server.log
