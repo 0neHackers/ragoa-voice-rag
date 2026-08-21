@@ -367,7 +367,7 @@ afterwards. Recording it because the whole point of a per-version changelog is t
 folder and the entry agree, and twice now they briefly didn't.
 **Supersedes:** V6.0
 
-## V6.2 — 2026-08-21
+## V7.0 — 2026-08-21
 **Type:** Major
 **Summary:** First run against live Sarvam and Anthropic keys. Two real STT bugs found and
 fixed, streaming established as unavailable on this account, graceful degradation added for
