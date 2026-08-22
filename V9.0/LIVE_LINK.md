@@ -31,12 +31,11 @@ conclusion, not an assumption.
 ## What's running now: Cloudflare Tunnel
 
 ```bash
-# 1. start the app
-python -m uvicorn demo.app:app --host 127.0.0.1 --port 8600
-
-# 2. expose it (downloads once, no account, no card, no signup)
-cloudflared tunnel --url http://127.0.0.1:8600
+./serve_public.sh
 ```
+
+That starts the app, waits for the pipeline to finish loading, opens the tunnel, and prints
+the URL. It fetches `cloudflared` on first run (~55MB) — no account, no card, no signup.
 
 It prints a public `https://<random>.trycloudflare.com` URL in about ten seconds. Real
 HTTPS, so the microphone works — browsers only allow `getUserMedia` in a secure context.
@@ -59,45 +58,54 @@ Mitigations if you use it:
 
 ## Free options that survive your PC being off
 
-Both require a card **for identity verification only** — neither charges you within the
-free allowance. If you have access to a card, either beats the tunnel.
+### GitHub Codespaces — **no card, recommended**
 
-### Oracle Cloud Always Free *(most headroom)*
+Free tier gives **120 core-hours a month** (60 hours on the 2-core machine) and 15GB
+storage, on a personal account, **with no payment method on file**. The machine is
+2 cpu / 8GB — ten times the headroom this needs — and it runs on GitHub's infrastructure,
+so your laptop can be closed.
 
-Genuinely free forever, not a trial: 4 ARM cores and **24GB RAM**. Enormously more than
-this needs.
+`.devcontainer/devcontainer.json` is already committed and does the work: it builds the
+production Dockerfile, bakes the index, forwards port 7860, and marks that port **public**
+so a judge who isn't signed into GitHub can open it.
 
-1. Sign up at [oracle.com/cloud/free](https://www.oracle.com/cloud/free/)
-2. Create an **Ampere A1** compute instance (ARM), Ubuntu 22.04, 1–2 cores / 6–12GB
-3. Open port 80/443 in the security list
-4. `docker build` and `docker run` this repo's Dockerfile on it
-5. Point Cloudflare Tunnel (or Caddy) at it for HTTPS
+**This is the one step I could not do for you.** Creating a Codespace needs the
+`codespace` OAuth scope, which only an interactive browser grant can give, and the CLI on
+this machine is signed in as `shanzalfiroz` while the repo belongs to `0neHackers`. Two
+clicks in your browser:
 
-Cost: **₹0**. Setup: 30–45 minutes. ARM is fine — onnxruntime and faiss-cpu both ship
-arm64 wheels.
+1. Add the secret first: **github.com/settings/codespaces → New secret** →
+   name `SARVAM_API_KEY`, value your key, repository access `0neHackers/ragoa-voice-rag`
+2. Open **github.com/0neHackers/ragoa-voice-rag** → green **Code** button → **Codespaces**
+   tab → **Create codespace on main**
+3. First creation takes **15–25 minutes** (it embeds all 15,449 chunks into the image).
+   Later starts are instant.
+4. When it finishes, the **Ports** tab shows 7860. Confirm visibility is **Public**, then
+   copy the `https://…app.github.dev` URL — that's your live link.
 
-### Google Cloud Run *(least setup)*
+Watch the budget: 60 hours on 2-core is about two and a half days of continuous running.
+The devcontainer sets a 240-minute idle timeout, so it suspends itself rather than burning
+hours while nobody is looking. Restarting it is instant and gives the same URL.
 
-Free tier covers 180,000 vCPU-seconds and 360,000 GiB-seconds per month, and it scales to
-zero, so a demo that gets a few hundred requests costs nothing.
+### Kaggle Notebooks / Google Colab — no card, session-limited
 
-```bash
-gcloud run deploy ragoa-voice-rag \
-  --source . --region asia-south1 \
-  --memory 2Gi --cpu 2 --port 7860 \
-  --allow-unauthenticated \
-  --set-env-vars SARVAM_API_KEY=...
-```
+Both give far more RAM than this needs, free, with no card. Both also cap sessions
+(Kaggle ~12h, Colab shorter and idle-sensitive) and neither exposes a public port on its
+own, so you'd still run `cloudflared` inside the notebook. Workable as a fallback; more
+moving parts than Codespaces for the same result.
 
-The one wrinkle: scale-to-zero means a cold request loads the 536MB model first, so the
-first hit after idle takes 20–40 seconds. `--min-instances 1` fixes that but leaves the
-free tier.
+### Oracle Cloud Always Free / Google Cloud Run — card for verification
+
+Both are genuinely free within their allowances and both want a card on file purely to
+verify identity. Oracle's Always Free tier is the most generous thing on this list — 4 ARM
+cores and 24GB RAM, permanently — and Cloud Run's free tier easily covers a demo's traffic.
+Neither is an option without a card, which is why Codespaces is the recommendation above.
 
 ---
 
-## Paid, if it ever becomes an option
+## Paid, for completeness
 
 | host | cost | note |
 |---|---|---|
-| Hugging Face PRO | $9/mo | Docker Spaces now need PRO; free CPU is static-only |
+| Hugging Face PRO | $9/mo | Docker Spaces now require PRO; free CPU is static-only |
 | Render Standard | $25/mo | `starter` is 512MB — same as free — so it does **not** work |

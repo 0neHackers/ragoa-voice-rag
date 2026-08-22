@@ -636,3 +636,58 @@ docs re-pointed at V9.0.
 translation and speak-aloud, the responsive masthead, and the Cloudflare Tunnel live-link
 path. 177 tests and 17/17 requirement checks pass in the new folder before it was committed.
 **Supersedes:** V8.3
+
+## V9.1 — 2026-08-22
+**Type:** Major
+**Summary:** ONNX arena reverted to default after a clean A/B disproved the change; team
+mark resized on small screens; semantic chunker windowed; Codespaces path added; one-command
+public-serve script.
+**Files changed:**
+- `retrieval/embedder.py` — `USE_MEM_ARENA = True` (onnxruntime default restored);
+  `_session_options()` now returns `None` unless `EMBED_ONNX_ARENA=0`.
+- `chunking/semantic.py` — `_embed_windowed()`, `EMBED_WINDOW = 4096`.
+- `demo/index.html` — small-screen mark height retargeted to ~55% of the title's *visual*
+  size.
+- `serve_public.sh` — new. Starts the app, waits for readiness, opens the tunnel, prints
+  the URL.
+- `.devcontainer/devcontainer.json` (repo root) — new. Codespaces on the production
+  Dockerfile with port 7860 forwarded publicly.
+- `LIVE_LINK.md` — Codespaces documented as the recommended no-card option.
+**Details:**
+**Audited for anything disabled during development; found nothing.** Every runtime default
+is at full capability — generation on, guardrails on, hybrid retrieval on, retries on, all
+four chunking strategies registered, the unsupported-number check hard-blocking.
+**The ONNX memory arena was never disabled in shipped code** — it only ever appeared in a
+throwaway measurement script. It *was* briefly turned on-purpose off during this session on
+the strength of that script's 93.8ms-vs-104ms reading, and a clean back-to-back A/B (fresh
+process per config, 25 queries each, same load) did not reproduce it:
+
+```
+arena OFF   559 MB   p50 104.6ms   p90 111.7ms   max 124.5ms
+arena ON    559 MB   p50 100.3ms   p90 106.1ms   max 118.3ms
+```
+
+Identical memory, and the arena is marginally *faster*. The earlier number was noise from a
+differently-loaded machine. Reverted to onnxruntime's default and the docstring now carries
+the A/B rather than the wrong figure. `EMBED_ONNX_ARENA=0` remains for memory-constrained
+hosts.
+**Semantic chunking is still not in the shipped index, and the reason changed.** The
+corpus-wide sentence pass is now windowed at 4096 so peak memory no longer scales with
+corpus size — the original defect. It still fails to build here, but at a different point:
+fastembed spawns a fresh worker pool per `embed()` call, and on this machine's current
+commit headroom one of those workers dies loading the model even at `parallelism=3`. The
+windowing fix is correct and kept; the shipped ensemble stays `metadata_aware + recursive`,
+giving up the 1.7pp recall@5 that `semantic` measured, and that trade is documented rather
+than quietly dropped.
+**Mark sizing.** The previous small-screen rule set the mark to ~53% of the title's bounding
+box, which still read as roughly three-quarters the size of the letterforms — a heading's box
+includes leading and descender space that a tightly-cropped SVG doesn't have. Retargeted
+against cap height (~0.72 of font size): measured at 375px the mark is 14px against a 25px
+cap height, **55%**, centred at 0px offset with no overflow.
+**Hosting.** `serve_public.sh` reduces the live link to one command and prints the URL.
+GitHub Codespaces is now documented as the recommended no-card option — 120 core-hours a
+month free, 2 cpu / 8GB, running on GitHub rather than the user's laptop — with a committed
+devcontainer that builds the production image and forwards 7860 publicly. Creating the
+Codespace itself needs an interactive `codespace` OAuth grant that could not be done from
+here, so that step is written up as two browser clicks.
+**Supersedes:** V9.0
