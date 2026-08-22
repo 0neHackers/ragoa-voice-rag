@@ -2,9 +2,11 @@
   "name": "Voice RAG — 0neHackers",
 
   // Reuse the production Dockerfile rather than a devcontainer-specific image, so what
-  // runs in a Codespace is the same thing that would run on any container host. The
-  // index gets baked during the image build, which is why creating this Codespace takes
-  // 15-25 minutes the first time and starts instantly afterwards.
+  // runs in a Codespace is the same thing that would run on any container host.
+  //
+  // The index ships in the repo, so the build copies it instead of re-embedding: roughly
+  // 3 minutes. It used to rebuild here, which took 48 minutes on a 2-core Codespace
+  // because build_parallelism collapses to a single worker at that core count.
   "build": {
     "dockerfile": "../V9.0/Dockerfile",
     "context": "../V9.0",
@@ -34,15 +36,19 @@
   },
 
   // Codespaces mounts the repo at /workspaces/<repo>, which is NOT where the image put
-  // the code. The Dockerfile COPYs into /app and bakes the index there during the build,
-  // so the app must be started from /app — starting it from the mounted workspace would
-  // find no index_store and 503 on every request.
+  // the code. The Dockerfile COPYs into /app and keeps the index there, so the app must
+  // start from /app — starting it from the mounted workspace finds no index_store and
+  // 503s on every request.
   //
-  // The fallback exists because that layout is a Codespaces implementation detail rather
-  // than a guarantee: if /app/index_store ever isn't there, fall back to the workspace
-  // copy and say so, instead of silently serving a broken container.
+  // Runs through `sh -lc`, not `bash -lc`. The default shell in this image is dash, and
+  // an interactive terminal here reports `/bin/sh: gh: not found`-style errors — so a
+  // postAttachCommand that assumes bash is a coin flip. sh is guaranteed.
+  //
+  // It also verifies the server actually answered instead of just reporting that it was
+  // launched, because "starting on :7860" printed next to a dead process is worse than
+  // no message at all.
   "postAttachCommand": {
-    "server": "bash -lc 'if [ -d /app/index_store ]; then cd /app; else echo \"WARNING: /app/index_store missing, falling back to the workspace copy\"; cd \"$PWD\"; fi; nohup python -m uvicorn demo.app:app --host 0.0.0.0 --port 7860 > /tmp/app.log 2>&1 & sleep 3; echo \"Voice RAG starting on :7860 — open the PORTS tab, confirm 7860 is Public, and use that URL\"'"
+    "server": "sh -lc 'cd /app 2>/dev/null || cd \"$PWD\"; if [ ! -f index_store/vectors.npy ]; then echo \"WARNING: no index at $(pwd)/index_store — the app will start but every query will fail\"; fi; (python -m uvicorn demo.app:app --host 0.0.0.0 --port 7860 > /tmp/app.log 2>&1 &); sleep 8; python -c \"import urllib.request as u; print(\\\"HEALTH:\\\", u.urlopen(\\\"http://127.0.0.1:7860/health\\\", timeout=10).read().decode()[:160])\" 2>/dev/null || echo \"server did not answer — see /tmp/app.log\"; echo \"\"; echo \"NEXT: open the PORTS tab, set port 7860 visibility to Public, then use that URL.\"'"
   },
 
   "customizations": {

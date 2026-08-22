@@ -21,8 +21,14 @@ ENV PYTHONUNBUFFERED=1 \
     FASTEMBED_CACHE_DIR=/home/app/model_cache
 
 # libgomp1 is required by onnxruntime; libsndfile1 by soundfile for audio decoding.
+#
+# curl and ca-certificates are here for operability, not for the app. This image doubles
+# as the Codespaces devcontainer, and python:3.13-slim ships without curl — which meant
+# every "is the server actually up?" check inside a Codespace failed with
+# `sh: curl: not found` before it could tell you anything. 2MB to make the container
+# debuggable is a good trade.
 RUN apt-get update && apt-get install -y --no-install-recommends \
-        libgomp1 libsndfile1 \
+        libgomp1 libsndfile1 curl ca-certificates \
     && rm -rf /var/lib/apt/lists/* \
     && useradd -m -u 1000 app
 

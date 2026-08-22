@@ -804,3 +804,31 @@ have skipped it and the Dockerfile would have fallen straight back to rebuilding
 Verified: index files survive the build context, the index loads and answers at 99.9ms,
 177 tests, 17/17 requirement checks.
 **Supersedes:** V9.3
+
+## V9.5 — 2026-08-22
+**Type:** Major
+**Summary:** Made the container debuggable and the attach command shell-safe, after both
+failed in the live Codespace.
+**Files changed:**
+- `V9.0/Dockerfile` — installs `curl` and `ca-certificates`.
+- `.devcontainer/devcontainer.json` — `postAttachCommand` runs under `sh`, not `bash`;
+  verifies the server answered rather than only reporting that it launched; corrected the
+  stale "15-25 minute build" comment.
+**Details:**
+**Two things broke in the real Codespace that no local test would have caught.**
+`python:3.13-slim` has no `curl`, so every "is the server up?" check inside the container
+died with `sh: curl: not found` before it could report anything. The image is also the
+devcontainer, so minimal-for-production and undebuggable-in-development turned out to be the
+same decision. 2MB of `curl` is worth it.
+The `postAttachCommand` invoked `bash -lc`. The default shell there is dash — the live
+terminal reports `/bin/sh: 12: curl: not found`, dash's error format — so assuming bash was
+a coin flip. It now runs under `sh`.
+It also used to print "Voice RAG starting on :7860" whether or not anything started. It now
+calls `/health` and prints the response, or points at `/tmp/app.log`. A success message next
+to a dead process is worse than no message.
+**Correction to V9.4:** I claimed the 2-core build would exceed the Codespaces timeout. It
+did not — it completed in **2,863s (~48 minutes)** at 183.7 ms/chunk, against my projection
+of ~75 minutes from a 294 ms/chunk figure measured on Windows. The Codespace was faster than
+estimated. Shipping the index was still right (48 minutes per rebuild is unusable, and it is
+~3 minutes now), but "it will never finish" was wrong.
+**Supersedes:** V9.4
