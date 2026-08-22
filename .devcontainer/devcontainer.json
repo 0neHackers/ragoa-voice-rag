@@ -13,7 +13,7 @@
 
   // 7860 matches the Dockerfile's default PORT. "public" is what makes the forwarded
   // URL openable by a judge who isn't signed into GitHub — the default is "private",
-  // which returns a login page to everyone else and looks like a broken link.
+  // which serves a login page to everyone else and looks like a broken link.
   "forwardPorts": [7860],
   "portsAttributes": {
     "7860": {
@@ -33,15 +33,25 @@
     "PORT": "7860"
   },
 
-  // Start the server on attach. `nohup ... &` so the Codespace's terminal stays usable
-  // and closing it doesn't take the server with it.
-  "postAttachCommand": "cd /app && nohup uvicorn demo.app:app --host 0.0.0.0 --port 7860 > /tmp/app.log 2>&1 & sleep 2 && echo 'Voice RAG starting on :7860 — see the Ports tab'",
+  // Codespaces mounts the repo at /workspaces/<repo>, which is NOT where the image put
+  // the code. The Dockerfile COPYs into /app and bakes the index there during the build,
+  // so the app must be started from /app — starting it from the mounted workspace would
+  // find no index_store and 503 on every request.
+  //
+  // The fallback exists because that layout is a Codespaces implementation detail rather
+  // than a guarantee: if /app/index_store ever isn't there, fall back to the workspace
+  // copy and say so, instead of silently serving a broken container.
+  "postAttachCommand": {
+    "server": "bash -lc 'if [ -d /app/index_store ]; then cd /app; else echo \"WARNING: /app/index_store missing, falling back to the workspace copy\"; cd \"$PWD\"; fi; nohup python -m uvicorn demo.app:app --host 0.0.0.0 --port 7860 > /tmp/app.log 2>&1 & sleep 3; echo \"Voice RAG starting on :7860 — open the PORTS tab, confirm 7860 is Public, and use that URL\"'"
+  },
 
   "customizations": {
     "vscode": {
       "extensions": ["ms-python.python"]
     }
-  },
+  }
 
-  "remoteUser": "app"
+  // No "remoteUser" override. The image already runs as the non-root `app` user (uid
+  // 1000, which Codespaces expects); naming it again here has caused Codespaces to fail
+  // its permission setup on images that don't grant that user sudo.
 }
