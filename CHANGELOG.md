@@ -586,3 +586,40 @@ strategy and guardrail counts, git for the secrets check, and a constructed
 because it grepped a docstring phrase instead of testing behaviour; rewritten to build a
 decline and assert its shape.
 **Supersedes:** V8.1
+
+## V8.3 — 2026-08-22
+**Type:** Major
+**Summary:** Masthead centres on small and small-medium screens; free-hosting path found and
+documented after measuring why every 512MB tier is impossible.
+**Files changed:**
+- `demo/index.html` — `@media (max-width: 48rem)` block: masthead stacks and centres, title
+  grows a step, mark pinned to ~52% of its height, tagline and chip rail centred.
+- `LIVE_LINK.md` — new. The memory measurement, the Cloudflare Tunnel path, and the two
+  free always-on alternatives.
+**Details:**
+**Masthead centring.** Below 48rem the title, team mark and tagline stack and centre as one
+lockup. Side-by-side reads as two orphaned objects on a phone, because the gap between them
+stretches to fill the row. The title *grows* at this width rather than shrinking — it's the
+only thing on screen — and the mark is pinned to roughly half its height so the hierarchy
+stays obvious. Verified by measurement at 390px and 600px (all three centred, offset 0px;
+mark 19–23px against a 36–43px title; stacked; no overflow) and at 1100px (side-by-side,
+vertical centres matching at 0px, right edge flush at 0px).
+**Why free 512MB hosting is impossible here, measured rather than assumed.** Profiled the
+running process by component: Python + numpy + faiss + FastAPI 63MB, **ONNX embedding
+session 536MB**, index 86MB, BM25 31MB — 717MB total. The corpus is not the problem, so
+shrinking it would have saved at most ~90MB of a 200MB overshoot and still missed. Disabling
+onnxruntime's CPU memory arena saves a further 40MB and slightly *improves* latency (93.8ms
+vs 104ms median), but 496MB for the embedder alone is still over a 512MB limit. `fastembed`'s
+only lighter model is `all-MiniLM-L6-v2`, which has no Devanagari — unusable for a Hindi
+corpus. So Render free and Koyeb free are out on measurement, not guesswork.
+**Two hosting recommendations I got wrong before this**, both now corrected in the docs:
+Render `starter` is 512MB, identical to free, so it never would have worked; and Hugging Face
+now requires PRO for Docker Spaces on free CPU, so the "free 16GB" advice was out of date.
+Shipped path is **Cloudflare Tunnel** — free, no account, no card, real HTTPS so the
+microphone works. Verified end to end over the public URL: `/health` ok, a Hindi question
+answered with generated Hindi, retrieval 95.1ms, all four guardrails passing. Its limitation
+is stated plainly in `LIVE_LINK.md` rather than glossed: it runs on the user's machine, so
+the PC must stay awake for the judging window and the URL changes on restart. Oracle Cloud
+Always Free (24GB ARM) and Google Cloud Run are documented as always-on free alternatives
+for anyone who has a card for identity verification.
+**Supersedes:** V8.2
