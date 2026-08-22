@@ -13,7 +13,11 @@ services:
     rootDir: V9.0
     dockerfilePath: ./Dockerfile
     dockerContext: .
-    plan: starter          # free's 512MB will OOM — index + ONNX session needs ~1GB
+    # `standard`, not `starter`. Measured: the ONNX embedding session alone is 536MB and
+    # the process settles at ~717MB. Render's `starter` is 512MB — identical to free — so
+    # it OOMs just as surely. This file previously said `starter`, which was wrong.
+    # If paying isn't an option, see V9.0/LIVE_LINK.md for free alternatives.
+    plan: standard
     region: singapore      # closest Render region to India and to Sarvam's endpoints
     healthCheckPath: /health
     autoDeploy: true
