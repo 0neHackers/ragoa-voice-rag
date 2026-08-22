@@ -29,7 +29,7 @@
 ## 1. One key now — Anthropic is gone
 
 Everything runs on `SARVAM_API_KEY`: speech-to-text, answer generation, translation, and
-text-to-speech. Your key is in `master_repo/V8.0/.env`, which is git-ignored.
+text-to-speech. Your key is in `master_repo/V9.0/.env`, which is git-ignored.
 
 > **Rotate it once judging closes.** It went through a chat transcript, so treat it as
 > exposed regardless of how carefully the repo handles it.
@@ -62,7 +62,7 @@ Otherwise it's five steps, and I've removed the fiddly one:
 
 1. [dashboard.render.com](https://dashboard.render.com) → **New** → **Blueprint**
 2. Connect `0neHackers/ragoa-voice-rag` — there's now a `render.yaml` **at the repo root**
-   with `rootDir: V8.0` baked in, so you don't have to set a root directory by hand
+   with `rootDir: V9.0` baked in, so you don't have to set a root directory by hand
 3. Paste `SARVAM_API_KEY` when prompted (marked `sync: false`, never touches git)
 4. **Apply.** First build is **15–25 minutes** — it embeds all 15,449 chunks into the image
    so the container is ready the moment it boots

@@ -1,0 +1,20 @@
+# Render blueprint. Docker rather than a native Python env, because the index has to be
+# built into the image (see Dockerfile) and Render's build step would otherwise have to
+# re-embed 15k chunks on every deploy.
+services:
+  - type: web
+    name: ragoa-voice-rag
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    plan: starter          # 512MB is not enough — the index plus ONNX session needs ~1GB
+    healthCheckPath: /health
+    envVars:
+      - key: SARVAM_API_KEY
+        sync: false        # set in the dashboard; never committed
+      - key: INDEX_DIR
+        value: /app/index_store
+      - key: EMBED_THREADS
+        value: "1"
+      - key: RETRIEVAL_TOP_K
+        value: "5"

@@ -10,7 +10,7 @@ services:
   - type: web
     name: ragoa-voice-rag
     runtime: docker
-    rootDir: V8.0
+    rootDir: V9.0
     dockerfilePath: ./Dockerfile
     dockerContext: .
     plan: starter          # free's 512MB will OOM — index + ONNX session needs ~1GB

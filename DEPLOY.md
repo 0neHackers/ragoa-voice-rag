@@ -36,7 +36,7 @@ to play it.
 FastAPI serves the page and the API together, so one service gets you both: one link for
 the form, one thing that can break.
 
-**There's a Blueprint at the repo root now**, with `rootDir: V8.0` baked in — so you don't
+**There's a Blueprint at the repo root now**, with `rootDir: V9.0` baked in — so you don't
 have to set a root directory by hand, which was the step most likely to trip you up.
 
 1. Go to [dashboard.render.com](https://dashboard.render.com) → **New** → **Blueprint**.
@@ -81,7 +81,7 @@ window.__API_BASE__ = 'https://voice-rag-0nehackers.onrender.com';
 **3.** Deploy just the `demo/` folder to Vercel:
 
 ```bash
-cd master_repo/V8.0/demo
+cd master_repo/V9.0/demo
 npx vercel --prod
 ```
 
@@ -99,7 +99,7 @@ will silently do nothing. Serve it over http://localhost or https://, always.
 ## Option C — Hugging Face Spaces
 
 Honestly a decent fit, since the model and dataset are already on HF and the free tier gives
-you 16 GB. Create a Space with the **Docker** SDK, push the contents of `V8.0/`, and add
+you 16 GB. Create a Space with the **Docker** SDK, push the contents of `V9.0/`, and add
 `SARVAM_API_KEY` as a Space secret. Same Dockerfile, no changes.
 
 ---
@@ -108,7 +108,7 @@ you 16 GB. Create a Space with the **Docker** SDK, push the contents of `V8.0/`,
 
 **https://github.com/0neHackers/ragoa-voice-rag** — public, `main`, 15 commits, 434 files.
 
-The per-phase history (V0.0 → V8.0) is intact, which matters: Video 1 is about process, and
+The per-phase history (V0.0 → V9.0) is intact, which matters: Video 1 is about process, and
 a repo with one giant commit dated the day of the deadline tells the opposite story. Each
 version folder is a frozen snapshot with its own dated `CHANGELOG.md` entry.
 

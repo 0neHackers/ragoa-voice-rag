@@ -623,3 +623,16 @@ the PC must stay awake for the judging window and the URL changes on restart. Or
 Always Free (24GB ARM) and Google Cloud Run are documented as always-on free alternatives
 for anyone who has a card for identity verification.
 **Supersedes:** V8.2
+
+## V9.0 — 2026-08-22
+**Type:** Major
+**Summary:** Version bump carrying the V8.x work forward into a clean snapshot; deployment
+docs re-pointed at V9.0.
+**Files changed:**
+- `V9.0/` — new snapshot, full copy of the verified V8.0 tree.
+- `render.yaml` (repo root) — `rootDir: V8.0` → `V9.0`.
+- `HANDOFF.md`, `DEPLOY.md` — version references updated.
+**Details:** Carries forward the semantic groundedness guardrail, the Sarvam-only stack,
+translation and speak-aloud, the responsive masthead, and the Cloudflare Tunnel live-link
+path. 177 tests and 17/17 requirement checks pass in the new folder before it was committed.
+**Supersedes:** V8.3
