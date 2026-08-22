@@ -832,3 +832,41 @@ of ~75 minutes from a 294 ms/chunk figure measured on Windows. The Codespace was
 estimated. Shipping the index was still right (48 minutes per rebuild is unusable, and it is
 ~3 minutes now), but "it will never finish" was wrong.
 **Supersedes:** V9.4
+
+## V9.6 — 2026-08-22
+**Type:** Major
+**Summary:** Abandoned Codespaces port forwarding as the public link after it failed three
+separate ways, and moved the tunnel inside the container instead.
+**Files changed:**
+- `V9.0/Dockerfile` — installs `cloudflared`.
+- `V9.0/serve_public.sh` — rewritten: polls for health instead of sleeping a fixed amount,
+  starts the tunnel, waits for the URL, and cleans up both processes on exit.
+- `.devcontainer/devcontainer.json` — `postAttachCommand` runs `serve_public.sh` and prints
+  the public URL.
+**Details:**
+**Codespaces port forwarding does not work as a submission link, measured against the live
+Codespace rather than assumed:**
+1. **Visibility reverts.** Port 7860 was set to Public and served HTTP 200 for a few
+   minutes, then went back to redirecting at `github.dev/pf-signin` on its own. The
+   `portsAttributes.visibility: "public"` hint in `devcontainer.json` does not hold it
+   either.
+2. **Non-browser clients get 401 regardless.** `GET /health` briefly succeeded while
+   `POST /ask/text` returned 401 the whole time — the relay gates anything without a
+   browser session cookie, so the API is unusable even when the page is not.
+3. **The interstitial cannot be disabled.** Anonymous visitors get GitHub's "You are about
+   to access a development port served by someone's codespace" warning, with a
+   report-abuse link. There is no setting to turn it off. For a judge following a
+   submission link, that is the first impression.
+Verified from a clean browser with no GitHub session: it lands on a GitHub sign-in page,
+not the app.
+So the tunnel now runs *inside* the Codespace. That keeps the part of Codespaces that is
+actually valuable — it runs on GitHub's infrastructure rather than the user's laptop — and
+drops all three problems at once: a plain `*.trycloudflare.com` URL, no sign-in, no
+interstitial, and it works for API clients as well as browsers.
+`serve_public.sh` was also made honest about startup. It used to `sleep` a fixed interval
+and then claim success; it now polls `/health` for up to two minutes, prints the actual
+response, and on failure dumps the last 30 lines of the log rather than reporting a URL for
+a process that died. Loading 15k vectors plus the ONNX session takes seconds on a fast
+machine and considerably longer on a cold 2-core Codespace, so a fixed sleep was always
+going to be wrong somewhere.
+**Supersedes:** V9.5

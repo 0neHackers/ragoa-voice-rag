@@ -40,15 +40,17 @@
   // start from /app — starting it from the mounted workspace finds no index_store and
   // 503s on every request.
   //
-  // Runs through `sh -lc`, not `bash -lc`. The default shell in this image is dash, and
-  // an interactive terminal here reports `/bin/sh: gh: not found`-style errors — so a
-  // postAttachCommand that assumes bash is a coin flip. sh is guaranteed.
+  // Starts the app and a Cloudflare tunnel, then prints a public URL.
   //
-  // It also verifies the server actually answered instead of just reporting that it was
-  // launched, because "starting on :7860" printed next to a dead process is worse than
-  // no message at all.
+  // Not Codespaces' own port forwarding: that reverts port visibility to private on its
+  // own, returns 401 to every non-browser client, and shows anonymous visitors an
+  // "about to access a development port" interstitial with no way to disable it. None of
+  // that is acceptable for a link you hand to a judge. The tunnel keeps GitHub's uptime
+  // and drops all three problems.
+  //
+  // Runs under sh, not bash: the shell in this image is dash.
   "postAttachCommand": {
-    "server": "sh -lc 'cd /app 2>/dev/null || cd \"$PWD\"; if [ ! -f index_store/vectors.npy ]; then echo \"WARNING: no index at $(pwd)/index_store — the app will start but every query will fail\"; fi; (python -m uvicorn demo.app:app --host 0.0.0.0 --port 7860 > /tmp/app.log 2>&1 &); sleep 8; python -c \"import urllib.request as u; print(\\\"HEALTH:\\\", u.urlopen(\\\"http://127.0.0.1:7860/health\\\", timeout=10).read().decode()[:160])\" 2>/dev/null || echo \"server did not answer — see /tmp/app.log\"; echo \"\"; echo \"NEXT: open the PORTS tab, set port 7860 visibility to Public, then use that URL.\"'"
+    "server": "sh -lc 'cd /app 2>/dev/null || cd \"$PWD\"; nohup sh serve_public.sh > /tmp/serve.log 2>&1 & sleep 25; grep -A2 \"LIVE:\" /tmp/serve.log || (echo \"still starting — run: tail -f /tmp/serve.log\"; tail -5 /tmp/serve.log)'"
   },
 
   "customizations": {

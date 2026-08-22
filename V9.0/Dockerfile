@@ -32,6 +32,19 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/* \
     && useradd -m -u 1000 app
 
+# cloudflared, for a public URL that doesn't fight you.
+#
+# Codespaces' own port forwarding turned out to be unusable as a submission link: the
+# port visibility silently reverts to private, non-browser clients get a flat 401, and
+# anonymous visitors hit an "about to access a development port" interstitial that GitHub
+# provides no way to disable. Running a tunnel from inside the container keeps GitHub's
+# uptime while producing a plain HTTPS URL that just serves the app.
+ARG TARGETARCH=amd64
+RUN curl -fsSL -o /usr/local/bin/cloudflared \
+        "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-${TARGETARCH}" \
+    && chmod +x /usr/local/bin/cloudflared \
+    && cloudflared --version
+
 WORKDIR /app
 
 COPY requirements.txt .
