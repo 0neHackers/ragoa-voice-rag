@@ -897,3 +897,30 @@ the latency and chunking benchmarks, and recalibrating both the confidence gate 
 semantic groundedness threshold — each of which thresholds on cosine values that a different
 embedding space would shift.
 **Supersedes:** V9.6
+
+## V9.8 — 2026-08-22
+**Type:** Major
+**Summary:** Railway added as the deployment target that actually fits, and the embedding
+model is now baked into the image instead of downloading on the first request.
+**Files changed:**
+- `railway.json` (repo root) — new. Points at `V9.0/Dockerfile`, `/health` check with a
+  300s timeout, restart-on-failure.
+- `V9.0/Dockerfile` — warms the embedder during the build so the model ships in the image.
+- `V9.0/LIVE_LINK.md` — Railway section with the measured fit and the credit caveat.
+**Details:**
+**Railway's free trial is the first free tier measured to fit:** 1 GB RAM, 2 vCPU, 4 GB
+image cap, $5 one-time credit, and no credit card. Against the measured ~717 MB process and
+a ~1 GB image, both clear. Checked against Railway's current pricing page rather than
+recalled — the two earlier hosting recommendations in this project were wrong because they
+were remembered rather than verified.
+Stated caveat rather than glossed: the $5 is one-time, and a continuously-running 1 GB
+service costs roughly $10/month on Railway's rates, so the credit covers on the order of two
+weeks. Long enough for a judging window; not permanent hosting.
+**Baking the model into the image fixes a real gap.** `model_cache/` is gitignored, and once
+the index is committed nothing else in the build touches the embedder — so a build from a
+clean checkout produced an image with no model, and the first user request downloaded 225 MB
+while they waited. It also made the running container depend on the Hugging Face hub being
+reachable from whatever host it landed on. The build now runs `get_embedder().warmup()`,
+which costs one download at build time and removes both problems. Verified locally through
+the identical code path: model warm, dim 384, first inference 106 ms.
+**Supersedes:** V9.7

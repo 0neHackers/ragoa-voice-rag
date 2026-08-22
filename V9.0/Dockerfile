@@ -79,6 +79,17 @@ RUN if [ -f index_store/vectors.npy ]; then \
                   i=VectorIndex.load('index_store'); \
                   print(f'index ready: {i.size} chunks, {i.backend}')"
 
+# Pull the embedding model into the image.
+#
+# `model_cache/` is gitignored, so a build from a clean checkout has no model — and when
+# the index is committed, nothing else in the build touches the embedder either. Without
+# this step the model downloads on the *first request* instead: ~225MB fetched while a
+# user waits, and a hard runtime dependency on the Hugging Face hub being reachable from
+# whatever host this lands on. Both are avoidable by paying for it once, here.
+RUN python -c "from retrieval.embedder import get_embedder; \
+               e=get_embedder(); \
+               print(f'model warm: {e.model_name}, dim {e.dim}, first inference {e.warmup():.0f}ms')"
+
 # 7860 is the Hugging Face Spaces convention and is what `app_port` in the Space README
 # points at. Render overrides PORT from its own environment, so one default serves both.
 ENV INDEX_DIR=/app/index_store \

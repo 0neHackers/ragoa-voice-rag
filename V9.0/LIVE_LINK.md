@@ -85,6 +85,38 @@ Mitigations if you use it:
 
 ---
 
+## Railway free trial — 1 GB, no card *(best free option found)*
+
+Checked against Railway's current pricing rather than remembered, because these tiers move:
+
+| plan | RAM | card |
+|---|---|---|
+| **Free Trial** | **1 GB**, 2 vCPU, 4 GB image | **no card required**, $5 one-time credit |
+| Free | 0.5 GB | — |
+| Hobby | 48 GB | $5/mo |
+
+1 GB clears the measured ~717 MB, and the ~1 GB image clears the 4 GB cap. No sleep, no
+interstitial, a normal `*.up.railway.app` URL, and it runs on Railway's machines rather than
+yours.
+
+**The honest limit:** the $5 is a one-time grant, not monthly. A 1 GB service running
+continuously costs roughly $10/month on Railway's rates, so expect the credit to cover
+somewhere around two weeks. That is comfortably longer than a judging window, and it is not
+permanent hosting.
+
+```
+railway.json at the repo root already points at V9.0/Dockerfile and sets the /health check.
+1. railway.com -> New Project -> Deploy from GitHub -> 0neHackers/ragoa-voice-rag
+2. Variables -> add SARVAM_API_KEY
+3. Settings -> Networking -> Generate Domain
+```
+
+Build takes roughly 5 minutes: the index is committed, so it is copied rather than rebuilt,
+and the embedding model is baked in during the build rather than downloaded on the first
+request.
+
+---
+
 ## Free options that survive your PC being off
 
 ### GitHub Codespaces — **no card, recommended**
