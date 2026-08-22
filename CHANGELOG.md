@@ -691,3 +691,36 @@ devcontainer that builds the production image and forwards 7860 publicly. Creati
 Codespace itself needs an interactive `codespace` OAuth grant that could not be done from
 here, so that step is written up as two browser clicks.
 **Supersedes:** V9.0
+
+## V9.2 — 2026-08-22
+**Type:** Major
+**Summary:** Removed 2.3GB of build artifacts and caches, and fixed the bump script that
+was creating them.
+**Files changed:**
+- `bump.sh` — now excludes `index_store`, `index_store_dev` and `*.log` from version copies.
+- `.devcontainer/devcontainer.json` — start the app from `/app` (where the index is baked),
+  not the mounted workspace; dropped the `remoteUser` override.
+**Details:**
+**A real defect, found while cleaning.** `bump.sh` copied `index_store` into every new
+version folder, and the index was then also copied in by hand with
+`cp -r V<old>/index_store V<new>/index_store`. When the destination already exists that
+form nests the source *inside* it, so each bump added another layer:
+`V9.0/index_store/index_store/index_store/...`, five deep, 189MB of duplicates in V9.0
+alone and 38 → 226MB of growth across V5.0 → V9.0 for an index that is 38MB. The app never
+noticed because it loads the top-level files, which were always correct.
+`bump.sh` now excludes the index the same way it already excluded the venv and the caches —
+it is a build artifact, reproducible from `retrieval.build_index` — and the correct copy
+form (`cp -r src/. dst/`) is documented in the file next to the exclusion.
+**Cleaned: 3146MB → 866MB.** Nested index duplicates; `__pycache__` and `.pytest_cache`
+across all ten version folders; stray `*.log` and scratch calibration scripts;
+`index_store_dev`, `index_full` and `index_small`; built indexes and `corpus_cache` copies
+in the nine frozen version folders; and `hf_cache` (1209MB), which held the raw MSMARCO-XI
+parquet download. That last one is safe because `corpus_cache` holds 5,000 extracted
+examples and builds use `--limit 1500`, so `load_examples` serves from the JSONL cache and
+never re-reads the parquet — verified before deleting rather than assumed.
+Kept: `.venv` (463MB), `model_cache` (241MB, needed to run), and V9.0's `index_store` (38MB,
+now exactly four files) and `corpus_cache` (60MB, saves a 462MB re-download).
+Nothing tracked by git was touched — every removed path was already gitignored. Verified
+after: 177 tests, 17/17 requirement checks, and a live query answering in Hindi at 106.1ms
+retrieval.
+**Supersedes:** V9.1

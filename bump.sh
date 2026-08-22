@@ -21,10 +21,17 @@ SRC="V${CUR}"; DST="V${NEW}"
 [ -e "$DST" ] && { echo "$DST already exists — refusing to overwrite a frozen snapshot" >&2; exit 1; }
 
 mkdir -p "$DST"
-# Copy everything except build artifacts: the venv, caches, and downloaded models are
-# reproducible from requirements.txt and must not be duplicated into every snapshot.
+# Copy everything except build artifacts: the venv, caches, downloaded models and the
+# built index are all reproducible and must not be duplicated into every snapshot.
+#
+# index_store was NOT excluded originally, and copying it forward by hand each bump cost
+# 189MB of nested duplicates by V9.0 — because `cp -r src dst` nests src *inside* dst when
+# dst already exists. To carry an index into the new version, copy the contents:
+#     cp -r V<old>/index_store/. V<new>/index_store/
+# or just rebuild: python -m retrieval.build_index --limit 1500 --out index_store
 tar -c --exclude='.venv' --exclude='__pycache__' --exclude='.pytest_cache' \
        --exclude='hf_cache' --exclude='model_cache' --exclude='corpus_cache' \
+       --exclude='index_store' --exclude='index_store_dev' --exclude='*.log' \
        -C "$SRC" . | tar -x -C "$DST"
 
 printf '%s' "$NEW" > VERSION
