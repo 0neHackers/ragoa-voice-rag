@@ -870,3 +870,30 @@ a process that died. Loading 15k vectors plus the ONNX session takes seconds on 
 machine and considerably longer on a cold 2-core Codespace, so a fixed sleep was always
 going to be wrong somewhere.
 **Supersedes:** V9.5
+
+## V9.7 — 2026-08-22
+**Type:** Minor
+**Summary:** Documented, with measurements, why no free 512MB tier can host this and what
+compression would actually be required.
+**Files changed:**
+- `V9.0/LIVE_LINK.md` — added the allocator measurement table, the corpus-deletion figure,
+  and the vocabulary-pruning analysis.
+**Details:**
+Non-behavioural: documentation of a measurement, no code path changed.
+**Corrects an earlier claim.** V9.3 recorded that disabling onnxruntime's CPU memory arena
+saved 40MB. Measured properly across five configurations, it saves **14MB** — 497MB default
+down to 483MB with arena off, memory pattern off, device allocator for initializers, and all
+graph optimisation disabled. The earlier figure was run-to-run noise.
+**Two workarounds ruled out by measurement rather than argument.** Deleting the index and
+BM25 entirely — 117MB — still leaves ~546MB, so a 512MB tier cannot host this with no corpus
+at all. And no allocator configuration closes a 170MB gap with 14MB of savings.
+**What compression would actually take.** The model is already int8-quantised; the 225MB on
+disk is dominated by the vocabulary, not the transformer — roughly 96M parameters sit in a
+250,000 x 384 embedding table. Vocabulary pruning down to tokens occurring in this corpus is
+the technique that would work, plausibly 60-70%.
+It is not done, and the reason is recorded so the decision can be revisited deliberately: it
+requires rebuilding the tokenizer, re-exporting ONNX, re-embedding 15,449 chunks, re-running
+the latency and chunking benchmarks, and recalibrating both the confidence gate and the
+semantic groundedness threshold — each of which thresholds on cosine values that a different
+embedding space would shift.
+**Supersedes:** V9.6

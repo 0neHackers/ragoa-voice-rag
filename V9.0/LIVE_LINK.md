@@ -13,15 +13,44 @@ embedding model. Measured breakdown:
 | BM25 inverted index | 31 MB |
 | **total** | **~717 MB** |
 
-That matters because it kills the obvious workaround. Shrinking the corpus to fit a free
-512MB tier would save at most ~90MB of the 200MB overshoot, and the model still wouldn't
-fit. Disabling onnxruntime's CPU memory arena (`enable_cpu_mem_arena=False`) saves another
-40MB and slightly *improves* latency (93.8ms vs 104ms median), but 496MB for the embedder
-alone is still over the line.
+That matters because it kills the obvious workarounds, both of which were measured rather
+than assumed.
 
-Nor can we swap in a smaller model. `fastembed`'s only lighter option is
-`all-MiniLM-L6-v2`, which is English-only — it has no Devanagari, and the entire corpus and
-every answer here is Hindi.
+**Shrinking the corpus doesn't help.** The index is 86MB and BM25 is 31MB of a 200MB
+overshoot. Delete both entirely and the process still sits at ~546MB — a 512MB tier cannot
+host this *with no corpus at all*.
+
+**Nor does tuning the ONNX allocator.** Every session option that plausibly affects memory,
+measured:
+
+| configuration | session | latency |
+|---|---|---|
+| default | 497 MB | 103.7 ms |
+| `enable_cpu_mem_arena = False` | 484 MB | 106.3 ms |
+| device allocator for initializers | 484 MB | 109.6 ms |
+| all combined | 485 MB | 104.6 ms |
+| + `ORT_DISABLE_ALL` graph optimisation | 483 MB | 106.9 ms |
+
+14MB, against a 170MB gap. The memory is resident model weights, not allocator overhead.
+
+**Why the model is large, and what would actually shrink it.** It is already int8-quantised
+— that is what the `-onnx-Q` suffix means — and it is 225MB on disk anyway, because the bulk
+of a multilingual encoder is not the transformer but the vocabulary: ~250,000 tokens x 384
+dimensions is roughly 96M parameters in the embedding table alone.
+
+So the technique that would work here is **vocabulary pruning**: keep only the tokens that
+occur in this Hindi corpus and in plausible queries, slice the embedding matrix down, and
+re-export. A 60-70% reduction is realistic and would bring the whole process under 512MB.
+
+It is deliberately not done here. It means rebuilding the tokenizer, re-exporting the ONNX
+graph, re-embedding all 15,449 chunks, re-running the latency and chunking benchmarks, and
+recalibrating every guardrail threshold against a changed score distribution — because the
+confidence gate and the semantic groundedness check both threshold on cosine values that a
+different embedding space would move. That is a day of work and revalidation, not an
+afternoon, and it trades a working system for a smaller one.
+
+(Note on generative-model quantisation work such as Gemma QAT: it targets decoder LLMs and
+does not apply to a sentence-embedding model that is already quantised.)
 
 So: **free 512MB tiers (Render free, Koyeb free) cannot host this.** That's a measured
 conclusion, not an assumption.
