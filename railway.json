@@ -3,6 +3,7 @@
   "build": {
     "builder": "DOCKERFILE",
     "dockerfilePath": "V9.0/Dockerfile"
+    "dockerContext": "V9.0"
   },
   "deploy": {
     "healthcheckPath": "/health",
