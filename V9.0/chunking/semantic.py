@@ -105,13 +105,42 @@ class SemanticChunker(ChunkingStrategy):
 
     # -- batched corpus pass -------------------------------------------------- #
 
+    #: Sentences embedded per call. Big enough that the batch dimension is well used,
+    #: small enough that the intermediate activations stay bounded. See `_embed_windowed`.
+    EMBED_WINDOW = 4096
+
+    def _embed_windowed(self, sentences: list[str]) -> np.ndarray:
+        """Embed sentences in fixed windows rather than one enormous call.
+
+        The original version passed every sentence in the corpus to `embed_texts` at
+        once. That is fine at benchmark scale and dies at production scale: at 1,500
+        examples it produced roughly 150k sentences, and the ONNX session raised
+        `bad allocation` partway through — which is why the shipped index shipped without
+        this strategy even though it scored best on recall.
+
+        Windowing costs nothing measurable. The batch dimension is already saturated well
+        below 4096, so throughput is unchanged; the only thing that changes is that peak
+        memory stops scaling with corpus size.
+        """
+        if not sentences:
+            return np.zeros((0, 1), dtype="float32")
+
+        if len(sentences) <= self.EMBED_WINDOW:
+            return self.embedder.embed_texts(sentences)
+
+        parts = [
+            self.embedder.embed_texts(sentences[i : i + self.EMBED_WINDOW])
+            for i in range(0, len(sentences), self.EMBED_WINDOW)
+        ]
+        return np.vstack(parts)
+
     def chunk_examples(self, examples) -> list[Chunk]:
-        """Override to embed every sentence in the corpus in **one** batched pass.
+        """Override to embed sentences in large batches rather than one call per passage.
 
         Calling `chunk_passage` per passage would issue one tiny embedding call per
         passage — thousands of round trips through the ONNX session, each too small to
         use the batch dimension. Collecting first turns index build time from minutes
-        into seconds.
+        into seconds; `_embed_windowed` then keeps peak memory flat as the corpus grows.
         """
         examples = list(examples)
         jobs: list[tuple[int, Passage, list[str]]] = []
@@ -126,10 +155,7 @@ class SemanticChunker(ChunkingStrategy):
                     jobs.append((ex_i, passage, sents))
                     all_sentences.extend(sents)
 
-        vectors = (
-            self.embedder.embed_texts(all_sentences)
-            if all_sentences else np.zeros((0, 1), dtype="float32")
-        )
+        vectors = self._embed_windowed(all_sentences)
 
         chunks: list[Chunk] = []
         cursor = 0

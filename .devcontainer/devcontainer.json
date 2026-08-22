@@ -1,0 +1,47 @@
+{
+  "name": "Voice RAG — 0neHackers",
+
+  // Reuse the production Dockerfile rather than a devcontainer-specific image, so what
+  // runs in a Codespace is the same thing that would run on any container host. The
+  // index gets baked during the image build, which is why creating this Codespace takes
+  // 15-25 minutes the first time and starts instantly afterwards.
+  "build": {
+    "dockerfile": "../V9.0/Dockerfile",
+    "context": "../V9.0",
+    "args": { "CORPUS_LIMIT": "1500" }
+  },
+
+  // 7860 matches the Dockerfile's default PORT. "public" is what makes the forwarded
+  // URL openable by a judge who isn't signed into GitHub — the default is "private",
+  // which returns a login page to everyone else and looks like a broken link.
+  "forwardPorts": [7860],
+  "portsAttributes": {
+    "7860": {
+      "label": "Voice RAG",
+      "visibility": "public",
+      "onAutoForward": "notify"
+    }
+  },
+
+  // SARVAM_API_KEY is not set here. It comes from a Codespaces secret, so it never
+  // enters the repo: github.com/settings/codespaces -> New secret -> SARVAM_API_KEY,
+  // scoped to this repository.
+  "remoteEnv": {
+    "INDEX_DIR": "/app/index_store",
+    "EMBED_THREADS": "1",
+    "STT_TRANSPORT": "auto",
+    "PORT": "7860"
+  },
+
+  // Start the server on attach. `nohup ... &` so the Codespace's terminal stays usable
+  // and closing it doesn't take the server with it.
+  "postAttachCommand": "cd /app && nohup uvicorn demo.app:app --host 0.0.0.0 --port 7860 > /tmp/app.log 2>&1 & sleep 2 && echo 'Voice RAG starting on :7860 — see the Ports tab'",
+
+  "customizations": {
+    "vscode": {
+      "extensions": ["ms-python.python"]
+    }
+  },
+
+  "remoteUser": "app"
+}

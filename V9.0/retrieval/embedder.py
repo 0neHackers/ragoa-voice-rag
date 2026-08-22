@@ -37,6 +37,23 @@ class Embedder:
     #: arenas, and the ONNX session load died with "bad allocation".
     DEFAULT_THREADS = 1
 
+    #: onnxruntime's CPU memory arena is left at its default (**on**).
+    #:
+    #: This was briefly turned off on the strength of a standalone measurement that
+    #: showed 93.8ms median against 104ms. A clean back-to-back A/B — both configs in
+    #: fresh processes, 25 queries each, same machine load — did not reproduce it:
+    #:
+    #:     arena OFF   559 MB   p50 104.6ms   p90 111.7ms   max 124.5ms
+    #:     arena ON    559 MB   p50 100.3ms   p90 106.1ms   max 118.3ms
+    #:
+    #: Identical memory, and the arena is marginally *faster*. The earlier figure was
+    #: noise from a differently-loaded machine. So the default stands, and the build's
+    #: "bad allocation" is handled where it actually comes from — worker count, via
+    #: `EMBED_BUILD_PARALLELISM` — rather than by turning off an unrelated optimisation.
+    #:
+    #: `EMBED_ONNX_ARENA=0` disables it if a memory-constrained host ever needs that.
+    USE_MEM_ARENA = True
+
     def __init__(self, model_name: str | None = None, threads: int | None = None) -> None:
         if threads is None:
             threads = int(os.getenv("EMBED_THREADS", str(self.DEFAULT_THREADS)))
@@ -53,7 +70,10 @@ class Embedder:
 
         from fastembed import TextEmbedding
 
-        self._model = TextEmbedding(self.model_name, cache_dir=cache_dir, threads=threads)
+        self._model = TextEmbedding(
+            self.model_name, cache_dir=cache_dir, threads=threads,
+            extra_session_options=_session_options(threads),
+        )
         self._dim: int | None = None
         self._warm = False
         # Each worker process loads its own ~250MB ONNX session, so this is bounded by
@@ -121,6 +141,25 @@ class Embedder:
         model (MiniLM, mean-pooled) is symmetric and needs none — see DECISIONS.md D3.
         """
         return self.embed_texts([text], parallel=0)[0]
+
+
+def _session_options(threads: int | None):
+    """ONNX session options, or None to accept fastembed's defaults.
+
+    Returns None in the normal case so we are not silently re-specifying onnxruntime's
+    defaults — see `Embedder.USE_MEM_ARENA` for why the arena stays on.
+    """
+    if os.getenv("EMBED_ONNX_ARENA", "1").strip() not in ("0", "false", "False"):
+        return None
+
+    import onnxruntime as ort
+
+    options = ort.SessionOptions()
+    options.enable_cpu_mem_arena = False
+    options.enable_mem_pattern = False
+    if threads:
+        options.intra_op_num_threads = int(threads)
+    return options
 
 
 def _l2_normalise(vecs: np.ndarray) -> np.ndarray:
