@@ -38,14 +38,27 @@ COPY . .
 RUN chown -R app:app /app /home/app
 USER app
 
-# Build the index into the image, as the runtime user so the artefacts are readable.
-# CORPUS_LIMIT is a build arg so a smaller or larger corpus can be baked without editing
-# this file.
+# Use the index that ships in the repo; build it only if it's missing.
+#
+# It used to always rebuild here, and that quietly didn't work on small machines.
+# `build_parallelism` is `min(8, cpu_count - 2)`, so a 2-core Codespace gets **one**
+# worker at ~294ms/chunk — 15,449 chunks is roughly **75 minutes**, past the build
+# timeout. The build looks hung at "Embedding 15449 chunks..." because that step prints
+# nothing until it finishes.
+#
+# The 38MB index is committed for exactly this reason, so the normal path is a file copy
+# that costs seconds. The fallback still exists so the image builds from a clean checkout
+# without one, and it says which path it took rather than leaving you to guess.
 ARG CORPUS_LIMIT=1500
-RUN python -m retrieval.build_index --limit ${CORPUS_LIMIT} --out index_store \
+RUN if [ -f index_store/vectors.npy ]; then \
+        echo "using the index committed in the repo (no rebuild)"; \
+    else \
+        echo "no index found — building one (slow on few cores)"; \
+        python -m retrieval.build_index --limit ${CORPUS_LIMIT} --out index_store; \
+    fi \
     && python -c "from retrieval.vector_index import VectorIndex; \
                   i=VectorIndex.load('index_store'); \
-                  print(f'index baked: {i.size} chunks, {i.backend}')"
+                  print(f'index ready: {i.size} chunks, {i.backend}')"
 
 # 7860 is the Hugging Face Spaces convention and is what `app_port` in the Space README
 # points at. Render overrides PORT from its own environment, so one default serves both.

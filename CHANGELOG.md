@@ -767,3 +767,40 @@ Tracked-file audit: 603 files, zero matches for `__pycache__`, `.pyc`, `.pytest_
 `.log`, `index_store`, `corpus_cache`, `hf_cache`, `model_cache`, `.env`, `.DS_Store` or
 editor backups.
 **Supersedes:** V9.2
+
+## V9.4 — 2026-08-22
+**Type:** Major
+**Summary:** Ship the prebuilt index in the repo. Baking it during the Docker build takes
+~75 minutes on a 2-core Codespace and never completes.
+**Files changed:**
+- `V9.0/index_store/` — **now committed** (38MB: `vectors.npy` 22.6MB, `chunks.jsonl` 15MB).
+- `.gitignore` — un-ignores `V9.0/index_store/` only; every other version stays ignored.
+- `.gitattributes` — marks the index files binary / `-text` so line-ending conversion can
+  never touch them.
+- `V9.0/Dockerfile` — uses the committed index when present, builds only if absent, and
+  prints which path it took.
+- `V9.0/.dockerignore` — stopped excluding `index_store/`, which would have silently undone
+  the fix.
+**Details:**
+**The Codespaces build was not hung, it was doing 75 minutes of work.** `build_parallelism`
+is `min(8, cpu_count - 2)`. A Codespace has 2 cores, so that resolves to **one** worker, and
+single-process embedding measures at 294ms/chunk — 15,449 chunks is ~75 minutes, past the
+build timeout. It looks frozen because `build_index` prints nothing between
+"Embedding 15449 chunks..." and completion. The local machine has 16 cores and 6-8 workers,
+which is why this never showed up here: an assumption about core count, invisible until it
+ran somewhere smaller.
+Committing the index turns image build from ~75 minutes into a file copy. Both files sit
+well inside GitHub's limits (22.6MB and 15MB against a 50MB warning and a 100MB hard cap).
+This reverses the "the index is a build artifact, keep it out of git" rule from V3.0, and
+the reversal is narrow and deliberate: that rule existed to stop the index being duplicated
+across ten version folders, and it still applies to all nine of the others. Committing it
+once, for the version that actually gets deployed, is the difference between a repo that
+deploys and one that times out.
+Two things that would each have silently defeated it, caught before pushing rather than
+after another failed build: `.dockerignore` still listed `index_store/`, so the COPY would
+have skipped it and the Dockerfile would have fallen straight back to rebuilding; and
+`vectors.npy` is a raw float32 buffer that CRLF conversion would corrupt without any error
+— `.gitattributes` now pins it binary.
+Verified: index files survive the build context, the index loads and answers at 99.9ms,
+177 tests, 17/17 requirement checks.
+**Supersedes:** V9.3

@@ -1,2 +1,11 @@
 * text=auto eol=lf
 *.sh text eol=lf
+
+# Index artifacts: never touch their bytes. vectors.npy is a raw float32 buffer, and
+# chunks.jsonl is read by byte offset in places — CRLF conversion on either would corrupt
+# the index silently, which is the worst way for it to break.
+V9.0/index_store/vectors.npy binary
+V9.0/index_store/*.jsonl -text
+V9.0/index_store/*.json -text
+*.woff2 binary
+*.wav binary
