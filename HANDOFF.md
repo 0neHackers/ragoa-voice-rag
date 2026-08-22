@@ -18,10 +18,10 @@
 | Answer generation | **Live** — `sarvam-105b-conversations`, real Hindi answers |
 | English→Hindi translation | Done, opt-in toggle, ~860ms |
 | Speak aloud (question + answer) | Done, Sarvam TTS, Hindi |
-| Tests | 171, all passing |
+| Tests | 177, all passing |
 | Web UI | Boxy minimal, fluid 320→3840px, four fonts, both team marks placed |
 | GitHub repo | **Done** — https://github.com/0neHackers/ragoa-voice-rag |
-| Live link | **Needs your Render account** — see below |
+| Live link | **GitHub Codespaces** — free, secret set, see below |
 | 2 videos + 6 social posts | **Yours to do** |
 
 ---
@@ -51,34 +51,39 @@ thinking and returned an empty answer.
 
 ---
 
-## 2. Deployment — the only thing left that I can't do
+## 2. Deployment — GitHub Codespaces, free
 
-**I cannot deploy for you.** Render's API returns 401 without a token, and I have no
-credentials for your account. If you want me to run it and verify end to end, generate a key
-at **Render Dashboard → Account Settings → API Keys → Create API Key** and send it. Your
-Render login is `0xshanzal@gmail.com`.
+**Your Codespace is created and `SARVAM_API_KEY` is set** as a Codespaces user secret
+scoped to this repo. Nothing else is needed, and nothing is being paid for.
 
-Otherwise it's five steps, and I've removed the fiddly one:
+Codespaces gives every personal account 120 core-hours and 15GB a month free — far more
+than a hackathon demo consumes — and it runs on GitHub's infrastructure, so unlike the
+Cloudflare tunnel it survives your laptop being closed.
 
-1. [dashboard.render.com](https://dashboard.render.com) → **New** → **Blueprint**
-2. Connect `0neHackers/ragoa-voice-rag` — there's now a `render.yaml` **at the repo root**
-   with `rootDir: V9.0` baked in, so you don't have to set a root directory by hand
-3. Paste `SARVAM_API_KEY` when prompted (marked `sync: false`, never touches git)
-4. **Apply.** First build is **15–25 minutes** — it embeds all 15,449 chunks into the image
-   so the container is ready the moment it boots
-5. Check `/health` returns `"ok": true` with `"index_size": 15449`
+**Getting the public URL:**
 
-**Stay on `starter` or above.** Free's 512 MB will OOM, and sleeping instances make a bad
-first impression on a cold judge link.
+1. Open the Codespace — **Code → Codespaces → RAGoa-Voice-RAG**
+2. It was created before my devcontainer fix landed, so run **Rebuild Container** from the
+   command palette (`Ctrl+Shift+P`). The earlier config started the app from the mounted
+   workspace instead of `/app`, where the index is actually baked, and would have returned
+   503 on every request.
+3. Wait for the build. **The first one is 15–25 minutes** — it embeds all 15,449 chunks
+   into the image so the container is ready the instant it boots.
+4. Open the **PORTS** tab, find port **7860**, set Visibility to **Public**. A private port
+   serves a GitHub login page to everyone else, which reads as a broken link.
+5. Copy the `https://…-7860.app.github.dev` URL. That's your live link.
 
-> **One thing I could not verify:** I tried to build the Docker image locally to de-risk
-> this, and Docker Desktop wouldn't start on your machine, so the container build is
-> **untested**. Every step inside it is individually verified — the dependency install, the
-> index build, the app boot — but not the assembled image on Linux. Watch that first Render
-> build rather than walking away from it. If it fails, the log will name the line.
+Check `<url>/health` returns `"ok": true` with `"index_size": 15449` before it goes in the
+form.
 
-Full detail, including why Vercel can't host the backend (250 MB function limit against a
-~375 MB payload), is in **[DEPLOY.md](DEPLOY.md)**.
+**One caveat.** A Codespace stops after 30 minutes idle by default. It restarts in seconds
+on the same URL, but a judge hitting it cold waits for that. Raise the timeout in
+Settings → Codespaces, and re-check the URL shortly before you submit.
+
+**Fallback:** `bash V9.0/serve_public.sh` starts the app plus a Cloudflare tunnel on your
+machine and prints a public URL in about ten seconds — free, no account. `V9.0/LIVE_LINK.md`
+explains why no 512MB free tier can host this (the ONNX session alone is 536MB) and what the
+always-on free options are.
 
 ---
 
@@ -152,17 +157,17 @@ verified before you click.
 
 Everything I can do without you is done. What's left:
 
-1. **Deploy on Render** — starter plan or above, `SARVAM_API_KEY` in the dashboard. Either
-   do the five steps above, or send me a Render API key and I'll do it and verify it.
+1. **Open the Codespace and Rebuild Container**, then set port 7860 to Public and copy the
+   URL. That's your live link — free, already has the key.
 2. **The two videos**, with mic audio verified before the real take.
 3. **Six posts** — three people, two platforms each, every one tagged `#RAGInGoa`, all
    accounts public.
 4. **The submission form**, filled completely and submitted once.
 5. **Confirmation the participation form is already in** — it's a separate form.
-6. **Rotate the Sarvam key** after judging closes.
+6. **Rotate the Sarvam key** after judging closes. It went through a chat transcript, as did
+   the Render and Hugging Face keys — revoke all three.
 
-Only item 1 is blocked on me having something I don't have. Send me a Render URL — or a
-Render API key — and I'll verify the deployment cold.
+Nothing here is blocked on me. Send me the Codespace URL and I'll verify it cold.
 
 ---
 

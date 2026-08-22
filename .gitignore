@@ -33,3 +33,12 @@ __pycache__/
 serve.log
 app.log
 tunnel.log
+
+# Timestamped benchmark runs — only results_latest.json is referenced; the rest are
+# snapshots of individual runs that go stale and start contradicting the README.
+**/benchmarks/results_2*.json
+**/benchmarks/results_full_pipeline.json
+
+# Generated audio (TTS output). audio_samples/tts_hi.wav is kept deliberately as the
+# fixture the STT verification command uses.
+**/audio_samples/answer_*.wav

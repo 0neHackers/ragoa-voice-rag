@@ -65,7 +65,7 @@ everything else:
 | Generation | `sarvam-105b-conversations` |
 | Chunking | 4 strategies, compared on recall@5 and MRR |
 | Guardrails | 4, across 3 pipeline positions |
-| Tests | 171 |
+| Tests | 177 |
 
 ### Which number is the 200ms one
 
@@ -509,7 +509,7 @@ V{X.Y}/
 ├── harness/       orchestrator, typed I/O, retry policy, assembly factory
 ├── benchmarks/    latency, chunking comparison, threshold calibration
 ├── demo/          FastAPI app + browser UI + CLI
-└── tests/         171 tests
+└── tests/         177 tests
 ```
 
 ## Versioning

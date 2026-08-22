@@ -724,3 +724,46 @@ Nothing tracked by git was touched — every removed path was already gitignored
 after: 177 tests, 17/17 requirement checks, and a live query answering in Hindi at 106.1ms
 retrieval.
 **Supersedes:** V9.1
+
+## V9.3 — 2026-08-22
+**Type:** Major
+**Summary:** Removed stale and contradictory artifacts from the shipped tree, corrected a
+duplicate deployment config that carried a known-wrong plan, and re-pointed the docs at
+Codespaces as the live path.
+**Files changed:**
+- `V9.0/render.yaml` — **deleted.** Stale duplicate of the repo-root blueprint, still
+  carrying `plan: starter`.
+- `V9.0/benchmarks/results_20260821_2108.json`, `results_20260822_0204.json`,
+  `results_20260822_0210.json`, `results_full_pipeline.json`,
+  `groundedness_calibration.json` — **deleted.** Unreferenced.
+- `V9.0/audio_samples/answer_tts.wav` — **deleted.** TTS test output.
+- `.gitignore` — ignores timestamped benchmark runs and generated answer audio.
+- `V9.0/verify_task.py` — deployment check now looks for the blueprint at the repo root and
+  additionally asserts the Codespaces devcontainer.
+- `V9.0/README.md`, `HANDOFF.md` — test count 171 → 177; deployment section rewritten for
+  Codespaces.
+**Details:**
+**The duplicate `render.yaml` was worse than clutter.** V9.0 carried its own copy still
+saying `plan: starter` — the exact error corrected at the repo root two versions earlier,
+after measuring that `starter` is 512MB, identical to free, against a process that settles
+at ~717MB. Two config files disagreeing about the plan is how a deploy gets pointed at a
+tier that cannot work. Only the root blueprint survives, and it is the one Render's Blueprint
+flow reads.
+**Four benchmark files were unreferenced and two actively contradicted the README.**
+`results_20260821_2108.json` and `results_full_pipeline.json` are from the pre-Sarvam era
+when generation ran extractive, so their full-pipeline numbers collapse onto retrieval —
+next to a README quoting a real 2801ms P50 with live generation, they invite exactly the
+wrong conclusion. Only `results_latest.json` is read by anything (`README.md`,
+`verify_task.py`, and `benchmarks/latency.py` writes it), so it is the only one kept. The
+gitignore now prevents timestamped runs from accumulating again.
+`groundedness_calibration.json` recorded the lexical-only calibration that
+`semantic_groundedness_calibration.json` superseded; keeping both means the evidence file
+for a guardrail disagrees with the guardrail.
+Verified after: **177 tests, 17/17 requirement checks**, and the full demo suite still
+answers four cases and refuses five for the correct reasons — `low_confidence` for a
+plausible question the corpus lacks, `language_mismatch` for English, `low_confidence` for
+gibberish, `input_safety` for injection and for a harmful request.
+Tracked-file audit: 603 files, zero matches for `__pycache__`, `.pyc`, `.pytest_cache`,
+`.log`, `index_store`, `corpus_cache`, `hf_cache`, `model_cache`, `.env`, `.DS_Store` or
+editor backups.
+**Supersedes:** V9.2

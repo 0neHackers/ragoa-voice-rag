@@ -118,8 +118,9 @@ chk("No .env committed",
     "only .env.example is tracked")
 chk("Deployment config present",
     (root / "Dockerfile").exists() and (root.parent / "render.yaml").exists()
-    and (root / "SPACE_README.md").exists(),
-    "Dockerfile + Render blueprint + HF Space manifest")
+    and (root / "SPACE_README.md").exists()
+    and (root.parent / ".devcontainer" / "devcontainer.json").exists(),
+    "Dockerfile + Render blueprint (repo root) + HF Space manifest + Codespaces devcontainer")
 
 width = max(len(c[0]) for c in checks)
 failed = 0
