@@ -1,0 +1,21 @@
+{
+  "lang": "hi",
+  "split": "validation",
+  "limit": 1500,
+  "strategies": [
+    "metadata_aware",
+    "recursive"
+  ],
+  "load_seconds": 0.2,
+  "chunk_seconds": 1.78,
+  "chunks_raw": 30759,
+  "chunks_indexed": 15449,
+  "chunks_per_strategy": {
+    "metadata_aware": 15250,
+    "recursive": 15509
+  },
+  "embed_seconds": 924.91,
+  "index_seconds": 1.23,
+  "backend": "faiss",
+  "dim": 384
+}

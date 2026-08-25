@@ -125,17 +125,14 @@ one that made the answer up.
 ## Running it locally
 
 ```bash
-cd V9.0
+cd V10.0
 python -m venv .venv && .venv/Scripts/activate      # Windows
 pip install -r requirements.txt
 cp .env.example .env                                 # add SARVAM_API_KEY
 python -m demo.app                                   # http://localhost:7860
 ```
 
-`V9.0` rather than the current `V10.0` because `V9.0` is the snapshot carrying the committed
-index, so there is nothing to build. The application code is identical between the two. To
-work in `V10.0` instead, carry the index across first
-(`cp -r V9.0/index_store/. V10.0/index_store/`), or rebuild it from scratch:
+The index ships in the repo, so there is nothing to build. To rebuild it from scratch:
 
 ```bash
 python -m retrieval.build_index --limit 1500 --out index_store
@@ -159,18 +156,26 @@ in front of a judge.
 
 Live at **https://ragoa-voice-rag.up.railway.app/**, on Railway.
 
-**The deployed snapshot is `V9.0`, not `V10.0`.** Railway's Root Directory is pinned to
-`V9.0`, and that is deliberate: `V9.0` is the version that carries the committed
-15,449-chunk index, so its image build is a file copy rather than a 48-minute re-embed on a
-2-core builder. `V10.0` differs from it only in `verify_task.py` and documentation — no
-application code changed between them — so nothing being served is stale. To move the
-deployment forward, carry the index across and repoint the dashboard:
+Railway's **Root Directory** is set to the version folder being served — currently `V10.0`.
+That setting is the whole deployment configuration, and it is dashboard-only; see
+[the Railway section below](#the-one-thing-that-is-easy-to-get-wrong-on-railway) for why.
+
+`V9.0` and `V10.0` both carry the committed 15,449-chunk index, so either builds by copying
+a file rather than re-embedding for 48 minutes on a 2-core builder. Their index files are
+byte-identical and git stores the blobs once, so keeping both deployable costs tree entries
+rather than another 38 MB. `V9.0` is retained as a rollback target: flipping Root Directory
+back to it is a complete, tested rollback with no other change required.
+
+`/health` reports the version it is serving, which is the quickest way to confirm which
+snapshot is live:
 
 ```bash
-cp -r V9.0/index_store/. V10.0/index_store/
+curl -s https://ragoa-voice-rag.up.railway.app/health
 ```
 
-then set Root Directory to `V10.0`. There is no reason to do this urgently.
+Note that **Watch Paths** is a separate setting and does not follow Root Directory. It gates
+whether a push triggers a redeploy, so it has to name the same folder — `/V10.0/**` — or
+pushes to the served version will not deploy.
 
 The image builds the index at **build time**, not on boot. Embedding 15k chunks takes about
 13 minutes; doing that on container start means a cold deploy serves 503s for a quarter of an
@@ -546,7 +551,7 @@ master_repo/
 ├── railway.json          deployment config
 ├── .devcontainer/        Codespaces setup
 └── V0.0/ … V10.0/        one frozen snapshot per phase of work
-                          V10.0 is current; V9.0 is what Railway serves
+                          V10.0 is current and deployed; V9.0 is the rollback target
 
 V10.0/
 ├── data/                 MSMARCO-XI loading and normalisation
@@ -561,6 +566,7 @@ V10.0/
 ├── benchmarks/           latency, chunking comparison, threshold calibration
 ├── demo/                 FastAPI app, browser UI, CLI
 ├── tests/                177 tests
+├── index_store/          the committed 15,449-chunk index
 ├── audio_samples/        Hindi WAV clips for exercising the voice path
 └── verify_task.py        18 checks against the task requirements
 ```

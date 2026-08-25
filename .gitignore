@@ -21,13 +21,19 @@ __pycache__/
 **/corpus_cache/
 
 # Built indexes are normally artifacts — reproducible from `retrieval.build_index` — and
-# stay out of git. V9.0's is the deliberate exception: baking it during a Docker build
-# takes ~75 minutes on a 2-core Codespace (build_parallelism drops to 1 worker at
-# 294ms/chunk), which exceeds the build timeout. Shipping the 38MB index turns that into
-# a file copy. Every other version's index remains ignored.
+# stay out of git. The *deployed* version's is the deliberate exception: baking it during a
+# Docker build takes ~48 minutes on a 2-core builder (build_parallelism drops to 1 worker),
+# which risks the build timeout. Shipping the 38MB index turns that into a file copy.
+#
+# V9.0 and V10.0 both carry one because the deployment moved from V9.0 to V10.0 and V9.0 is
+# kept deployable as a rollback target. The two copies are byte-identical, so git stores the
+# blobs once — the second version costs tree entries, not 38MB. Every other version's index
+# remains ignored.
 **/index_store/
 !V9.0/index_store/
 !V9.0/index_store/**
+!V10.0/index_store/
+!V10.0/index_store/**
 **/index_store_dev/
 **/build_full.log
 

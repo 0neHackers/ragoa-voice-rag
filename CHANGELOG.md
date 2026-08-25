@@ -1012,3 +1012,54 @@ against https://ragoa-voice-rag.up.railway.app/ returning `index_size=15449 stt=
 generation=True`.
 **Supersedes:** V9.0
 
+## V10.0 — 2026-08-25 (deployment follow-up, same version)
+**Type:** Packaging / repo correctness — no application code changed, so `VERSION` stays `10.0`
+**Summary:** Made `V10.0` deployable and moved the Railway deployment onto it, and fixed a
+`.gitattributes` rule that had silently stopped protecting the index.
+**Files changed:**
+- `V10.0/index_store/` — now tracked (`build_stats.json`, `chunks.jsonl`, `index_meta.json`,
+  `vectors.npy`). All four blobs are byte-identical to `V9.0`'s, so git stores them once and
+  the repo does not grow by another 38 MB.
+- `.gitignore` — `!V10.0/index_store/` added alongside the existing `V9.0` exception, with the
+  comment rewritten to say the exception tracks *the deployed version*, not V9.0 specifically.
+- `.gitattributes` — **bugfix.** The index-protection rules were written as
+  `V9.0/index_store/vectors.npy binary` and `V9.0/index_store/*.jsonl -text`, hardcoded to one
+  version. The moment the deployment moved to `V10.0`, its index fell back to `text=auto` and
+  was protected only by git's binary sniffing rather than by a declared rule. Rewritten as
+  `**/index_store/...` so the protection follows the artifact instead of the folder name.
+- `README.md` — deployment section rewritten: Root Directory now names `V10.0`, `V9.0` is
+  described as the rollback target, and the Watch Paths caveat is called out because that
+  setting does not follow Root Directory. Local-run instructions moved to `V10.0`.
+
+**Details:**
+
+**The index had to be normalised before it could be committed, and the reason is worth
+recording.** The working copies of `chunks.jsonl` on this machine carry CRLF, while `V9.0`'s
+committed blob is LF — 15,673,343 bytes against 15,688,792 on disk, a difference of exactly
+15,449 bytes, one `` per chunk. `V9.0`'s index was committed before the `-text` rule existed
+and was therefore normalised to LF on the way in, and that LF copy is what production has been
+serving. Staging `V10.0`'s copy under the newly-corrected `-text` rule would have stored the
+raw CRLF bytes instead — shipping an index that differs from the one proven to work, on a file
+the `.gitattributes` comment itself warns is read by byte offset. The working copies were
+normalised to LF first, after which all four blobs hash identically to `V9.0`'s.
+
+Worth noting the near-miss: correcting `.gitattributes` is what surfaced this. Under the old
+`text=auto` behaviour git was normalising `V10.0`'s copy on the way in and it happened to
+match; the corrected `-text` rule is stricter and correct, and it turned a silent coincidence
+into a visible difference.
+
+**Why this is not a version bump.** The rule is MAJOR for behaviour/function/UI/bugfix and
+MINOR for non-behavioural. Nothing under `V10.0/` that runs changed — no module, no threshold,
+no prompt, no UI. What changed is which files the repo tracks, one git attribute pattern, and
+documentation. Bumping would also be self-defeating here: a new folder would again ship without
+an index and need the same follow-up. Recorded against `V10.0` as part of its rollout instead.
+
+**The one step that cannot be done from here:** Railway's Root Directory is a dashboard-only
+setting — it is not expressible in `railway.json`, which is the entire reason the first build
+failed (see the V10.0 entry above). Switching the served version from `V9.0` to `V10.0` is a
+manual change in the Railway UI, along with Watch Paths.
+
+**Verification:** index loads in `V10.0` at 15,449 chunks on the faiss backend. 177 tests
+passing. `verify_task.py` 18/18.
+**Supersedes:** —
+
