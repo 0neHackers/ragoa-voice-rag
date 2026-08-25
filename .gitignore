@@ -48,3 +48,11 @@ tunnel.log
 # Generated audio (TTS output). audio_samples/tts_hi.wav is kept deliberately as the
 # fixture the STT verification command uses.
 **/audio_samples/answer_*.wav
+
+# Working docs kept locally, deliberately not shipped. The repo carries CHANGELOG.md,
+# a root README, and the per-version docs inside V*/ — root-level duplicates of those
+# only created two files disagreeing about the same thing.
+/DECISIONS.md
+/DEPLOY.md
+/HANDOFF.md
+/render.yaml

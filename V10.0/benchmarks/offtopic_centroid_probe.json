@@ -1,0 +1,31 @@
+{
+ "note": "centroid vs max-similarity: why the centroid off-topic guardrail was deleted",
+ "index_size": 15449,
+ "results": {
+  "भारत की राजधानी क्या है?": {
+   "kind": "real",
+   "centroid": -0.017,
+   "max_similarity": 0.585
+  },
+  "मधुमेह के लक्षण क्या हैं?": {
+   "kind": "real",
+   "centroid": 0.269,
+   "max_similarity": 0.739
+  },
+  "asdkjh qwe zxcvbn": {
+   "kind": "gibberish",
+   "centroid": 0.239,
+   "max_similarity": 0.524
+  },
+  "aaaaa bbbbb ccccc": {
+   "kind": "gibberish",
+   "centroid": 0.279,
+   "max_similarity": 0.561
+  },
+  "what is the capital of france": {
+   "kind": "english (script mismatch)",
+   "centroid": -0.029,
+   "max_similarity": 0.628
+  }
+ }
+}

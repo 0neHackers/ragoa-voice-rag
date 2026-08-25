@@ -924,3 +924,91 @@ reachable from whatever host it landed on. The build now runs `get_embedder().wa
 which costs one download at build time and removes both problems. Verified locally through
 the identical code path: model warm, dim 384, first inference 106 ms.
 **Supersedes:** V9.7
+
+## V10.0 — 2026-08-25
+**Type:** Major
+**Summary:** Railway deployment made live and documented, a false-negative in the live-service
+check fixed, the groundedness rationale corrected against its own raw data, and a root
+`README.md` written.
+**Files changed:**
+- `README.md` (repo root) — new. Full write-up: architecture, the measured latency tables,
+  the four chunking strategies with their recall@5/MRR comparison, the four guardrails
+  including the one that was deleted and the two that were recalibrated, the deployment
+  section, the versioning scheme, and a "what this does not do well" section. Embeds
+  `V10.0/demo/assets/0neHackers.svg` (header) and `V10.0/demo/assets/madeby0nehackers.svg`
+  (footer).
+- `V10.0/verify_task.py` — **bugfix.** `_live_service()` used `urllib.request`, which trusts
+  the OS certificate store; on a machine with an expired root there it reported
+  `CERTIFICATE_VERIFY_FAILED` against a perfectly healthy deployment, failing the suite
+  17/18 while `curl` returned 200. Switched to `requests`, which ships `certifi` and is
+  already a dependency. Also replaced the `render.yaml` existence check with `railway.json`,
+  and added the live `/health` check itself. Now 18/18.
+- `V10.0/DECISIONS.md` — D9 marked superseded (its header said "threshold: 0.20" while its
+  first line said 0.30, and it described a lexical-only guardrail that no longer ships).
+  New **D9a** records the shipped `semantic >= 0.30 OR lexical >= 0.25` rule with the full
+  threshold sweep recomputed from `benchmarks/semantic_groundedness_calibration.json`.
+- `V10.0/LIVE_LINK.md` — now states the app is live on Railway rather than presenting the
+  Cloudflare tunnel as what is running. The Railway section gained the Root Directory step
+  and the explanation of why the build fails without it.
+- `V10.0/README.md` — per-stage latency table corrected (it still carried figures from an
+  older run: query embed 95.44/120.56 against a measured 98.60/116.19, and similar drift on
+  dense/BM25/fusion). Live URL added. Fixed two dead links to `../DEPLOY.md` and
+  `../HANDOFF.md`, which are no longer tracked. Removed the stale claim that semantic
+  chunking's OOM was "not fixed yet" — it is windowed at `EMBED_WINDOW = 4096`.
+- `V10.0/benchmarks/offtopic_centroid_probe.json` — new. The centroid-vs-max-similarity
+  measurement behind the deleted off-topic guardrail, which had been quoted in prose with no
+  artifact backing it.
+- `.gitignore` — `/DECISIONS.md`, `/DEPLOY.md`, `/HANDOFF.md`, `/render.yaml` added. These
+  were pushed to the remote by mistake and deleted there by hand; ignoring the root-level
+  copies stops them coming back. The `V*/DECISIONS.md` copies stay tracked — code comments
+  reference them by decision number.
+- `railway.json` — replaced with the content actually deployed: no `dockerfilePath`.
+- `VERSION`, `V10.0/VERSION` — `9.0` -> `10.0`. `V9.0/` frozen.
+
+**Details:**
+
+**Railway build failure, and the part that is easy to get wrong.** The first build died on
+`COPY requirements.txt .` with `failed to compute cache key: "/requirements.txt": not found`.
+The Dockerfile was located correctly; the build *context* was not. Railway has no
+build-context field — `dockerContext` is not in its Config-as-Code schema, and an unknown key
+is silently ignored rather than rejected, so adding one looks like it should work and does
+nothing. The build context is always whatever directory Railway checks out, and that is
+controlled by **Root Directory**, which is dashboard-only and cannot be expressed in
+`railway.json`. Setting it to `V9.0` fixed the build; `dockerfilePath` then had to come out of
+`railway.json`, since a leftover `"V9.0/Dockerfile"` would make Railway look for
+`V9.0/V9.0/Dockerfile`. Watch Paths is unrelated — it only gates whether a push redeploys.
+
+**The groundedness write-up was wrong in the draft README, and the raw data caught it.**
+The draft claimed lexical-only at 0.20 refused 7.5% of faithful answers and that OR
+"compounds the two catch rates". Recomputing from the 30 calibration rows: lexical-only at
+0.20 gives 3.3% false refusals and 86.7% catch — the same operating point as the shipped OR
+rule, not worse. The 7.5% came from a different 40-sample sweep in D9 and did not belong in
+the same table. And the reasoning was backwards: OR *reduces* catch relative to either signal
+alone (86.7% against semantic-alone's 96.7%), because a hallucination gets two chances to
+pass. What OR actually buys is running both bars stricter than either could sustain alone —
+lexical at 0.25 refuses three faithful answers, semantic at 0.30 refuses three different
+ones, and the union refuses only the one that fails both. Both the README and D9a now say
+that, along with the two caveats: n=30, and the hallucinations are synthetic and therefore
+more obviously wrong than real drift.
+
+**The centroid numbers were re-measured rather than carried forward.** The off-topic-guardrail
+table had been quoted from an older, smaller index. Against the shipped 15,449-chunk index the
+finding is unchanged and slightly stronger — both gibberish strings score above a real question
+on centroid similarity (0.239 and 0.279 against -0.017), while max-similarity separates them
+correctly (0.524/0.561 against 0.585/0.739). Worth noting that both gibberish max-similarities
+still clear the confidence gate's 0.45 cosine bar, which is exactly why that gate needed the
+lexical signal too. The English control query scores 0.628 against the Hindi corpus, matching
+what the language guardrail was built to catch.
+
+**V9.0 stays the deployed snapshot.** Railway's Root Directory points at `V9.0`, and `V9.0` is
+the only version folder carrying the committed index (`.gitignore` un-ignores
+`V9.0/index_store/` specifically), so its image build is a file copy rather than a 48-minute
+re-embed on a 2-core builder. No application code changed in this bump — the delta is
+`verify_task.py` and documentation — so nothing being served is stale. Moving the deployment
+to `V10.0` means `cp -r V9.0/index_store/. V10.0/index_store/` and repointing the dashboard.
+
+**Verification:** 177 tests passing. `verify_task.py` 18/18, including a live `/health` request
+against https://ragoa-voice-rag.up.railway.app/ returning `index_size=15449 stt=True
+generation=True`.
+**Supersedes:** V9.0
+

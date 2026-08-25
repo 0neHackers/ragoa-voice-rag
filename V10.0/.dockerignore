@@ -1,0 +1,16 @@
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.git/
+.env
+
+# index_store is deliberately NOT listed here. It ships in the repo so the image doesn't
+# spend ~75 minutes rebuilding it on a 2-core machine, and excluding it would silently
+# undo that: the COPY would skip it and the Dockerfile would fall back to rebuilding.
+index_store_dev/
+
+benchmarks/results_2*.json
+benchmarks/results_full_pipeline.json
+*.log
+audio_samples/*.wav
